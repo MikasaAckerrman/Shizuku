@@ -47,15 +47,55 @@ class BootCompleteReceiver : BroadcastReceiver() {
 
         if (UserHandleCompat.myUserId() > 0 || Shizuku.pingBinder()) return
 
-        if (ShizukuSettings.getLastLaunchMode() == LaunchMethod.ROOT) {
+        // [fix-7] CE storage (where the launch mode lives) is unreadable at
+        // LOCKED_BOOT_COMPLETED and at BOOT_COMPLETED while the screen is
+        // locked — getLastLaunchMode() returns UNKNOWN and the start never
+        // happens. Fall back to a device-encrypted mirror of the mode so
+        // the server starts at LOCKED_BOOT_COMPLETED (~15-25 s from power),
+        // BEFORE the user even enters their PIN.
+        val mode = getLaunchModeWithDeFallback(context)
+        if (mode == LaunchMethod.ROOT) {
             rootStart(context)
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU // https://r.android.com/2128832
             && context.checkSelfPermission(WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED
-            && ShizukuSettings.getLastLaunchMode() == LaunchMethod.ADB) {
+            && (mode == LaunchMethod.ADB || mode == LaunchMethod.UNKNOWN)) {
+            // [fix-7] UNKNOWN here means CE is locked but the mode may still
+            // have been configured — and ADB is the only launch method that
+            // can work without root surviving reboot. Attempt it; the
+            // connectAndStart failure path is harmless (no dialog: our key
+            // is pre-authorized in /data/misc/adb/adb_keys).
             adbStart(context)
+            // Mirror the mode to DE for the next (even earlier) boot.
+            runCatching {
+                context.createDeviceProtectedStorageContext()
+                    .getSharedPreferences(DE_PREFS, Context.MODE_PRIVATE)
+                    .edit().putInt(KEY_DE_MODE, LaunchMethod.ADB)
+                    .putBoolean(KEY_DE_MIRRORED, true)
+                    .apply()
+            }
         } else {
             Log.w(AppConstants.TAG, "No support start on boot")
         }
+    }
+
+    /**
+     * [fix-7] The launch mode as seen at the current boot stage: the CE value
+     * when readable, otherwise the DE mirror written by a previous start.
+     */
+    private fun getLaunchModeWithDeFallback(context: Context): Int {
+        val ceMode = ShizukuSettings.getLastLaunchMode()
+        if (ceMode != LaunchMethod.UNKNOWN) return ceMode
+        return runCatching {
+            context.createDeviceProtectedStorageContext()
+                .getSharedPreferences(DE_PREFS, Context.MODE_PRIVATE)
+                .getInt(KEY_DE_MODE, LaunchMethod.UNKNOWN)
+        }.getOrDefault(LaunchMethod.UNKNOWN)
+    }
+
+    private companion object {
+        const val DE_PREFS = "boot_de"
+        const val KEY_DE_MODE = "mode"
+        const val KEY_DE_MIRRORED = "mirrored"
     }
 
     private fun rootStart(context: Context) {
