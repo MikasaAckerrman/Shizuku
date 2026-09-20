@@ -26,7 +26,13 @@ import javax.net.ssl.SSLSocket
 
 private const val TAG = "AdbClient"
 
-class AdbClient(private val host: String, private val port: Int, private val key: AdbKey) : Closeable {
+class AdbClient(
+    private val host: String,
+    private val port: Int,
+    private val key: AdbKey,
+    /** [fix-10] Per-instance read budget: scan candidates get a short one. */
+    private val readTimeoutMs: Int = READ_TIMEOUT_MS
+) : Closeable {
 
     companion object {
         /** [fix-2] TCP connect timeout — loopback refuses fast, but a black-holed listener must not hang. */
@@ -34,6 +40,9 @@ class AdbClient(private val host: String, private val port: Int, private val key
 
         /** [fix-2] Read timeout — adbd that accepts but never answers must not freeze the retry loop. */
         const val READ_TIMEOUT_MS = 10_000
+
+        /** [fix-9] Upper bound for a single ADB message payload. */
+        const val MAX_DATA_LENGTH = 1_048_576
     }
 
     private lateinit var socket: Socket
@@ -56,7 +65,7 @@ class AdbClient(private val host: String, private val port: Int, private val key
         socket = Socket()
         socket.tcpNoDelay = true
         socket.connect(java.net.InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
-        socket.soTimeout = READ_TIMEOUT_MS
+        socket.soTimeout = readTimeoutMs
         plainInputStream = DataInputStream(socket.getInputStream())
         plainOutputStream = DataOutputStream(socket.getOutputStream())
 
@@ -71,7 +80,7 @@ class AdbClient(private val host: String, private val port: Int, private val key
 
             val sslContext = key.sslContext
             tlsSocket = sslContext.socketFactory.createSocket(socket, host, port, true) as SSLSocket
-            tlsSocket.soTimeout = READ_TIMEOUT_MS // [fix-2] TLS reads must time out too
+            tlsSocket.soTimeout = readTimeoutMs // [fix-2] TLS reads must time out too
             tlsSocket.startHandshake()
             Log.d(TAG, "Handshake succeeded.")
 
@@ -161,6 +170,14 @@ class AdbClient(private val host: String, private val port: Int, private val key
         val dataLength = buffer.int
         val checksum = buffer.int
         val magic = buffer.int
+        // [fix-9] Guard against absurd data_length: AdbMessage allocates
+        // ByteArray(dataLength) below — a garbage or malicious header
+        // (any non-ADB listener hit during the port scan) could claim
+        // 2 GB and OOM the boot receiver. 1 MB is far above any real
+        // ADB payload (A_MAXDATA is 4 KB).
+        if (dataLength < 0 || dataLength > MAX_DATA_LENGTH) {
+            error("invalid data_length $dataLength")
+        }
         val data: ByteArray?
         if (dataLength >= 0) {
             data = ByteArray(dataLength)

@@ -45,7 +45,7 @@ class BootCompleteReceiver : BroadcastReceiver() {
             return
         }
 
-        if (UserHandleCompat.myUserId() > 0 || Shizuku.pingBinder()) return
+        if (UserHandleCompat.myUserId() > 0 || pingBinderSafe()) return
 
         // [fix-7] CE storage (where the launch mode lives) is unreadable at
         // LOCKED_BOOT_COMPLETED and at BOOT_COMPLETED while the screen is
@@ -96,6 +96,16 @@ class BootCompleteReceiver : BroadcastReceiver() {
         const val DE_PREFS = "boot_de"
         const val KEY_DE_MODE = "mode"
         const val KEY_DE_MIRRORED = "mirrored"
+
+        /** [fix-8] goAsync() grants ~10 s before ANR; leave a safety margin. */
+        const val BROADCAST_DEADLINE_MS = 8_000L
+
+        /** [fix-8] mDNS discovery + connect needs ~3 s; skip if we can't afford it. */
+        const val MDNS_BUDGET_MS = 4_000L
+
+        /** [fix-10] Short read budget for scan candidates — non-ADB open ports
+         *  (v2ray, local config servers) must fail in ~1.5 s, not 10 s each. */
+        const val SCAN_READ_TIMEOUT_MS = 1_500
     }
 
     private fun rootStart(context: Context) {
@@ -126,6 +136,13 @@ class BootCompleteReceiver : BroadcastReceiver() {
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private fun adbStartInner(context: Context, cr: android.content.ContentResolver) {
+        // [fix-8] Hard deadline: goAsync() only grants ~10 s before the
+        // system marks the receiver ANR and shows "Shizuku is not
+        // responding". A full 3-attempt retry with per-port timeouts can
+        // reach 60+ s. Track a wall-clock deadline and bail out before
+        // the ANR window: a late start is better than a crash dialog.
+        val deadline = System.currentTimeMillis() + BROADCAST_DEADLINE_MS
+
         // [fix-3/retry] After dispatching the start command, poll the binder:
         // the server registers asynchronously (1-3 s). Checking immediately
         // (as the previous code did) always saw "not up" and restarted the
@@ -138,26 +155,30 @@ class BootCompleteReceiver : BroadcastReceiver() {
         // ping-pong kill loop practically impossible: whoever sees the binder
         // up first returns and leaves the server alone.
         for (attempt in 1..3) {
-            if (Shizuku.pingBinder()) return // a server (any session's) is already up
+            if (pingBinderSafe()) return // a server (any session's) is already up
             try {
                 connectAndStart(cr)
             } catch (_: Exception) {
             }
             // Poll for up to 5 s — binder comes up 1-3 s after the command.
             for (i in 1..10) {
-                if (Shizuku.pingBinder()) return // server is up — done
+                if (pingBinderSafe()) return // server is up — done
                 try { Thread.sleep(500) } catch (_: InterruptedException) { return }
+                if (System.currentTimeMillis() > deadline) return // [fix-8] about to ANR
             }
-            // binder still down after 5 s — next attempt (7 s extra backoff)
+            // binder still down after 5 s — next attempt (2 s extra backoff)
             if (attempt < 3) {
                 try { Thread.sleep(2000) } catch (_: InterruptedException) { return }
+                if (System.currentTimeMillis() > deadline) return // [fix-8]
             }
         }
 
         // Last resort: mDNS (needs Wi-Fi). Enable the toggle only here —
         // the controller reset no longer matters because direct connect failed.
+        // [fix-8] Skip if we are already close to the ANR deadline.
+        if (System.currentTimeMillis() + MDNS_BUDGET_MS > deadline) return
         try { Settings.Global.putInt(cr, "adb_wifi_enabled", 1) } catch (_: Exception) {}
-        if (Settings.Global.getInt(cr, "adb_wifi_enabled", 0) == 1) {
+        if (runCatching { Settings.Global.getInt(cr, "adb_wifi_enabled", 0) }.getOrDefault(0) == 1) {
             val latch = CountDownLatch(1)
             val adbMdns = AdbMdns(context, AdbMdns.TLS_CONNECT) { port ->
                 if (port <= 0) return@AdbMdns
@@ -173,6 +194,10 @@ class BootCompleteReceiver : BroadcastReceiver() {
         }
     }
 
+    /** [fix-11] pingBinder must never crash the receiver: a bad receiver gets
+     *  permanently disabled by the system, killing autostart forever. */
+    private fun pingBinderSafe(): Boolean = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
+
     /**
      * [fix-1] Try EVERY candidate port in order instead of picking one and
      * skipping the rest. Previously the TLS path was dead code because the
@@ -187,25 +212,47 @@ class BootCompleteReceiver : BroadcastReceiver() {
      *   4. service.adb.tls.port (TLS listener)
      *   5. /proc/net/tcp{,6} scan: 5555 first, then all local listeners
      */
+    /** [fix-10] Short read budget for scan candidates — non-ADB open ports
+     *  (v2ray, local config servers) must fail in ~1.5 s, not 10 s each. */
     private fun connectAndStart(cr: android.content.ContentResolver, forcedPort: Int = -1) {
         val keystore = PreferenceAdbKeyStore(ShizukuSettings.getPreferences())
         val key = AdbKey(keystore, "shizuku")
 
-        val candidates = ArrayList<Int>(8)
-        if (forcedPort in 1..65535) candidates.add(forcedPort)
+        // [fix-1] Try EVERY candidate port in order instead of picking one and
+        // skipping the rest. Previously the TLS path was dead code because the
+        // default 5555 short-circuited the discovery chain.
+        //
+        // Discovery order (fastest / most reliable first):
+        //   1. forced port (mDNS result)
+        //   2. service.adb.tcp.port / persist.adb.tcp.port — vivo: this prop is
+        //      NOT policed by the wireless-debug controller and survives reboot
+        //      in persistent_properties (the no-Wi-Fi path)
+        //   3. 5555 (conventional adbd TCP port)
+        //   4. service.adb.tls.port (TLS listener)
+        //   5. /proc/net/tcp{,6} scan: 5555 first, then all local listeners
+        //
+        // [fix-10] Port sources are (almost) certainly adbd → full 10 s read
+        // budget. Scan candidates are merely "something is listening" — v2ray,
+        // config server, adb client, anything — so give them a short read
+        // budget: a wrong-but-open port fails fast instead of stalling the
+        // boot receiver for 10 s per port.
+        val knownPorts = ArrayList<Int>(4)
+        if (forcedPort in 1..65535) knownPorts.add(forcedPort)
         runCatching { EnvironmentUtils.getAdbTcpPort() }.getOrNull()
-            ?.takeIf { it in 1..65535 }?.let { candidates.add(it) }
-        candidates.add(5555)
+            ?.takeIf { it in 1..65535 }?.let { knownPorts.add(it) }
+        knownPorts.add(5555)
         runCatching { EnvironmentUtils.getAdbTlsPort() }.getOrNull()
-            ?.takeIf { it in 1..65535 }?.let { candidates.add(it) }
-        candidates.addAll(scanProcNetTcp())
+            ?.takeIf { it in 1..65535 }?.let { knownPorts.add(it) }
+        val scanPorts = scanProcNetTcp()
 
         var lastError: Exception? = null
-        for (port in candidates.distinct()) {
+        // Known sources first (full budget), then scan (short budget).
+        for ((port, readBudgetMs) in knownPorts.map { it to AdbClient.READ_TIMEOUT_MS } +
+                scanPorts.map { it to SCAN_READ_TIMEOUT_MS }) {
             if (port !in 1..65535) continue
             var client: AdbClient? = null
             try {
-                client = AdbClient("127.0.0.1", port, key)
+                client = AdbClient("127.0.0.1", port, key, readBudgetMs)
                 client.connect()
                 client.shellCommand(Starter.internalCommand, null)
                 return // command dispatched — caller polls the binder
