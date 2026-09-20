@@ -1,0 +1,52 @@
+name: Build APK (simple)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: "/usr/local/lib/android/sdk"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: 'recursive'
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Inject secrets (signing keystore + pre-authorized adb key)
+        env:
+          KS_B64: ${{ secrets.MINIS_KEYSTORE_B64 }}
+          KS_PW: ${{ secrets.MINIS_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.MINIS_KEYSTORE_ALIAS }}
+          ADBKEY_B64: ${{ secrets.MINIS_ADBKEY_DER_B64 }}
+        run: |
+          echo "$KS_B64" | base64 -d > shizuku-release.p12
+          echo "$ADBKEY_B64" | base64 -d > manager/src/main/assets/adbkey.der
+          {
+            echo "KEYSTORE_FILE=$PWD/shizuku-release.p12"
+            echo "KEYSTORE_PASSWORD=$KS_PW"
+            echo "KEYSTORE_ALIAS=$KS_ALIAS"
+            echo "KEYSTORE_ALIAS_PASSWORD=$KS_PW"
+          } > signing.properties
+
+      - name: Build debug APK
+        run: |
+          yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null || true
+          export GRADLE_OPTS="-Xmx4g"
+          ./gradlew :manager:assembleDebug --stacktrace -x :manager:lint
+          find manager/build/outputs/apk/debug -name "*.apk" -type f
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shizuku-debug-apk
+          path: manager/build/outputs/apk/debug/*.apk
