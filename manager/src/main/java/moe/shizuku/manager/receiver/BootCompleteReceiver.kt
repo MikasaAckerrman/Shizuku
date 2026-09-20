@@ -117,7 +117,7 @@ class BootCompleteReceiver : BroadcastReceiver() {
             try {
                 if (!Shell.getShell().isRoot) {
                     Shell.getCachedShell()?.close()
-                    return
+                    return@launch
                 }
                 Shell.cmd(Starter.internalCommand).exec()
             } finally {
