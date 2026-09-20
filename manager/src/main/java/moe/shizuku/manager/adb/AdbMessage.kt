@@ -38,7 +38,10 @@ class AdbMessage(
 
     fun validate(): Boolean {
         if (command != magic xor -0x1) return false
-        if (data_length != 0 && crc32(data) != data_crc32) return false
+        // [port] Modern adbd sends A_AUTH (and some other messages) with
+        // data_crc32=0 — treat a zero CRC field as "no checksum provided"
+        // instead of failing the whole connection.
+        if (data_length != 0 && data_crc32 != 0 && crc32(data) != data_crc32) return false
         return true
     }
 
