@@ -115,15 +115,23 @@ class BootCompleteReceiver : BroadcastReceiver() {
                 }
             }
             if (port in 1..65535) {
-                try {
-                    val keystore = PreferenceAdbKeyStore(ShizukuSettings.getPreferences())
-                    val key = AdbKey(keystore, "shizuku")
-                    val client = AdbClient("127.0.0.1", port, key)
-                    client.connect()
-                    client.shellCommand(Starter.internalCommand, null)
-                    client.close()
-                } catch (e: Exception) {
-                    Log.w(AppConstants.TAG, "Direct TLS start failed: ${e.message}")
+                // [port] Retry x3 with 7s gaps: on early boot the freshly started
+                // server's binder registration may hang while system_server initializes.
+                // Each attempt kills the old process and starts a fresh one.
+                for (attempt in 1..3) {
+                    try {
+                        val keystore = PreferenceAdbKeyStore(ShizukuSettings.getPreferences())
+                        val key = AdbKey(keystore, "shizuku")
+                        val client = AdbClient("127.0.0.1", port, key)
+                        client.connect()
+                        client.shellCommand(Starter.internalCommand, null)
+                        client.close()
+                        if (attempt < 3) {
+                            Thread.sleep(7000)
+                        }
+                    } catch (_: Exception) {
+                        try { Thread.sleep(7000) } catch (_: InterruptedException) {}
+                    }
                 }
             }
             // [port] 3) mDNS as the last resort (original logic)
