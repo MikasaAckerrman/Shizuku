@@ -31,8 +31,17 @@ import java.util.concurrent.TimeUnit
 class BootCompleteReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
+        // [fix-6] Accept USER_UNLOCKED too: on devices with a lock screen
+        // (PIN/pattern/password) the credential-encrypted storage — where
+        // both the launch mode and the ADB key live — is NOT readable at
+        // LOCKED_BOOT_COMPLETED / BOOT_COMPLETED while the phone is still
+        // locked. The receiver would read mode=UNKNOWN and silently do
+        // nothing. USER_UNLOCKED fires right after the user unlocks, when
+        // CE storage becomes available — that is the moment the start can
+        // actually succeed. pingBinder() guards against redundant work.
         if (Intent.ACTION_LOCKED_BOOT_COMPLETED != intent.action
-            && Intent.ACTION_BOOT_COMPLETED != intent.action) {
+            && Intent.ACTION_BOOT_COMPLETED != intent.action
+            && Intent.ACTION_USER_UNLOCKED != intent.action) {
             return
         }
 
