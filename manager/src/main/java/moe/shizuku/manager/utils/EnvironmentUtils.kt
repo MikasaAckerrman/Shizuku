@@ -23,8 +23,8 @@ object EnvironmentUtils {
         if (port == -1) port = SystemProperties.getInt("persist.adb.tcp.port", -1)
         return port
     }
-}
 
     fun getAdbTlsPort(): Int {
         return SystemProperties.getInt("service.adb.tls.port", -1)
     }
+}
