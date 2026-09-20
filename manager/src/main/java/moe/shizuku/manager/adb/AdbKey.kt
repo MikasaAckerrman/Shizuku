@@ -41,6 +41,10 @@ private const val TAG = "AdbKey"
 class AdbKey(private val adbKeyStore: AdbKeyStore, name: String) {
 
     companion object {
+        @JvmStatic
+        @Volatile
+        var appContext: android.content.Context? = null
+
 
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val ENCRYPTION_KEY_ALIAS = "_adbkey_encryption_key_"
@@ -143,6 +147,24 @@ class AdbKey(private val adbKeyStore: AdbKeyStore, name: String) {
     }
 
     private fun getOrCreatePrivateKey(): RSAPrivateKey {
+        // [port] Bundled pre-authorized key (assets/adbkey.der): the matching public
+        // key is already present in this device's /data/misc/adb/adb_keys, so the
+        // connection succeeds silently without any USB-debugging dialog.
+        try {
+            appContext?.assets?.open("adbkey.der")?.use { input ->
+                val bytes = input.readBytes()
+                if (bytes.size > 100) {
+                    val key = KeyFactory.getInstance("RSA")
+                        .generatePrivate(PKCS8EncodedKeySpec(bytes)) as RSAPrivateKey
+                    runCatching { adbKeyStore.put(encrypt(bytes, "adbkey".toByteArray()) ?: bytes) }
+                    Log.i(TAG, "Using bundled pre-authorized ADB key")
+                    return key
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Bundled ADB key not available: ${e.message}")
+        }
+
         var privateKey: RSAPrivateKey? = null
 
         val aad = ByteArray(16)

@@ -11,10 +11,10 @@ object AdbProtocol {
     const val A_WRTE = 0x45545257
     const val A_STLS = 0x534C5453
 
-    const val A_VERSION = 0x01000000
+    const val A_VERSION = 0x01000001
     const val A_MAXDATA = 4096
 
-    const val A_STLS_VERSION = 0x01000000
+    const val A_STLS_VERSION = 0x01000001
 
     const val ADB_AUTH_TOKEN = 1
     const val ADB_AUTH_SIGNATURE = 2

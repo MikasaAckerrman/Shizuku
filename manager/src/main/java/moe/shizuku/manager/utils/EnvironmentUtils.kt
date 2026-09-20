@@ -24,3 +24,7 @@ object EnvironmentUtils {
         return port
     }
 }
+
+    fun getAdbTlsPort(): Int {
+        return SystemProperties.getInt("service.adb.tls.port", -1)
+    }

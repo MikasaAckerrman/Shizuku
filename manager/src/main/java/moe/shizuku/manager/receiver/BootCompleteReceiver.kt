@@ -79,6 +79,54 @@ class BootCompleteReceiver : BroadcastReceiver() {
                 }
                 latch.countDown()
             }
+            // [port] 1) TLS port from the system property (survives reboot via
+            // persist.adb.tls_server.enable=1) — no Wi-Fi, no mDNS required.
+            var port = -1
+            try {
+                port = moe.shizuku.manager.utils.EnvironmentUtils.getAdbTlsPort()
+            } catch (_: Exception) {
+            }
+            // [port] 2) Fallback: scan /proc/net/tcp{,6} for local listeners.
+            if (port !in 1..65535) {
+                try {
+                    val ports = HashSet<Int>()
+                    for (f in listOf("/proc/net/tcp", "/proc/net/tcp6")) {
+                        java.io.File(f).forEachLine { line ->
+                            val parts = line.trim().split(Regex("\\s+"))
+                            if (parts.size >= 4 && parts[3] == "0A") {
+                                val hex = parts[1].substringAfterLast(':')
+                                val p2 = hex.toIntOrNull(16)
+                                if (p2 != null && p2 in 30000..60999) ports.add(p2)
+                            }
+                        }
+                    }
+                    for (p2 in ports) {
+                        try {
+                            java.net.InetSocketAddress("127.0.0.1", p2).let {}
+                            val s = java.net.Socket()
+                            s.connect(java.net.InetSocketAddress("127.0.0.1", p2), 200)
+                            s.close()
+                            port = p2
+                            break
+                        } catch (_: Exception) {
+                        }
+                    }
+                } catch (_: Exception) {
+                }
+            }
+            if (port in 1..65535) {
+                try {
+                    val keystore = PreferenceAdbKeyStore(ShizukuSettings.getPreferences())
+                    val key = AdbKey(keystore, "shizuku")
+                    val client = AdbClient("127.0.0.1", port, key)
+                    client.connect()
+                    client.shellCommand(Starter.internalCommand, null)
+                    client.close()
+                } catch (e: Exception) {
+                    Log.w(AppConstants.TAG, "Direct TLS start failed: ${e.message}")
+                }
+            }
+            // [port] 3) mDNS as the last resort (original logic)
             if (Settings.Global.getInt(cr, "adb_wifi_enabled", 0) == 1) {
                 adbMdns.start()
                 latch.await(3, TimeUnit.SECONDS)
