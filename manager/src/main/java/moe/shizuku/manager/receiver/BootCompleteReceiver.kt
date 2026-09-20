@@ -109,12 +109,21 @@ class BootCompleteReceiver : BroadcastReceiver() {
     }
 
     private fun rootStart(context: Context) {
-        if (!Shell.getShell().isRoot) {
-            Shell.getCachedShell()?.close()
-            return
+        // [fix-15] Shell.getShell() blocks up to 10 s — running it inside
+        // onReceive (main thread) is an ANR risk. Move the whole start into
+        // the IO dispatcher, same as the ADB path.
+        val pending = goAsync()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                if (!Shell.getShell().isRoot) {
+                    Shell.getCachedShell()?.close()
+                    return
+                }
+                Shell.cmd(Starter.internalCommand).exec()
+            } finally {
+                pending.finish()
+            }
         }
-
-        Shell.cmd(Starter.internalCommand).exec()
     }
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -157,7 +166,7 @@ class BootCompleteReceiver : BroadcastReceiver() {
         for (attempt in 1..3) {
             if (pingBinderSafe()) return // a server (any session's) is already up
             try {
-                connectAndStart(cr)
+                connectAndStart(cr, deadline = deadline) // [fix-13] pass deadline
             } catch (_: Exception) {
             }
             // Poll for up to 5 s — binder comes up 1-3 s after the command.
@@ -183,7 +192,7 @@ class BootCompleteReceiver : BroadcastReceiver() {
             val adbMdns = AdbMdns(context, AdbMdns.TLS_CONNECT) { port ->
                 if (port <= 0) return@AdbMdns
                 try {
-                    connectAndStart(cr, port)
+                    connectAndStart(cr, port, deadline) // [fix-13] deadline here too
                 } catch (_: Exception) {
                 }
                 latch.countDown()
@@ -214,7 +223,11 @@ class BootCompleteReceiver : BroadcastReceiver() {
      */
     /** [fix-10] Short read budget for scan candidates — non-ADB open ports
      *  (v2ray, local config servers) must fail in ~1.5 s, not 10 s each. */
-    private fun connectAndStart(cr: android.content.ContentResolver, forcedPort: Int = -1) {
+    private fun connectAndStart(
+        cr: android.content.ContentResolver,
+        forcedPort: Int = -1,
+        deadline: Long = Long.MAX_VALUE
+    ) {
         val keystore = PreferenceAdbKeyStore(ShizukuSettings.getPreferences())
         val key = AdbKey(keystore, "shizuku")
 
@@ -249,6 +262,10 @@ class BootCompleteReceiver : BroadcastReceiver() {
         // Known sources first (full budget), then scan (short budget).
         for ((port, readBudgetMs) in knownPorts.map { it to AdbClient.READ_TIMEOUT_MS } +
                 scanPorts.map { it to SCAN_READ_TIMEOUT_MS }) {
+            // [fix-13] The deadline MUST be enforced here too: a single
+            // attempt could burn 60+ s in per-port timeouts and ANR the
+            // receiver before the retry loop's deadline check ever runs.
+            if (System.currentTimeMillis() > deadline) break
             if (port !in 1..65535) continue
             var client: AdbClient? = null
             try {
