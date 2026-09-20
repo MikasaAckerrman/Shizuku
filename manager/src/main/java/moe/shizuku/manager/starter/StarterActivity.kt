@@ -137,6 +137,13 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
         postResult()
 
         GlobalScope.launch(Dispatchers.IO) {
+            // [fix-12] Same guard as startAdb: never kill a healthy server.
+            if (runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
+                sb.append('\n').append("Service is already running, nothing to do.")
+                postResult()
+                return@launch
+            }
+
             if (!Shell.getShell().isRoot) {
                 Shell.getCachedShell()?.close()
                 sb.append('\n').append("Can't open root shell, try again...").append('\n')
@@ -168,6 +175,16 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
         postResult()
 
         GlobalScope.launch(Dispatchers.IO) {
+            // [fix-12] Don't kill a healthy server: the starter binary
+            // SIGKILLs every shizuku_server process before forking a new one,
+            // so pressing "Start" while the service is already up would
+            // disconnect all active clients for no reason.
+            if (runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
+                sb.append('\n').append("Service is already running, nothing to do.")
+                postResult()
+                return@launch
+            }
+
             val key = try {
                 AdbKey(PreferenceAdbKeyStore(ShizukuSettings.getPreferences()), "shizuku")
             } catch (e: Throwable) {

@@ -124,6 +124,15 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
         mainHandler.post(() -> {
             sendBinderToClient();
             sendBinderToManager();
+            // [fix-12] Signal our pid so the starter (C++ side) can detect a
+            // healthy running server and skip the SIGKILL+restart cycle.
+            // Non-persist property: cleared on reboot, so a fresh boot always
+            // takes the full start path.
+            try {
+                android.os.SystemProperties.set("shizuku.server.pid",
+                        String.valueOf(android.os.Process.myPid()));
+            } catch (Throwable ignored) {
+            }
         });
     }
 

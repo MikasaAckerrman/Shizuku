@@ -226,7 +226,34 @@ int main(int argc, char *argv[]) {
     printf("info: starter begin\n");
     fflush(stdout);
 
-    // kill old server
+    // [fix-12] Idempotent start: if a healthy server is already running,
+    // DON'T kill it. Previously EVERY starter invocation SIGKILLed all
+    // shizuku_server processes before forking a new one — any second
+    // session, receiver re-delivery, or accidental re-run would destroy
+    // a working server and disconnect all active clients.
+    //
+    // Health signal: the server sets "shizuku.server.pid" (a non-persist
+    // system property, cleared on reboot) right after its binder is
+    // registered. If the property exists, the pid is alive, and the
+    // process is actually shizuku_server, treat the server as healthy.
+    {
+        char pid_str[32] = {0};
+        __system_property_get("shizuku.server.pid", pid_str);
+        if (pid_str[0] != '\0') {
+            int server_pid = atoi(pid_str);
+            if (server_pid > 0 && server_pid != getpid()) {
+                char name[1024];
+                if (get_proc_name(server_pid, name, 1024) == 0 &&
+                    strcmp(SERVER_NAME, name) == 0) {
+                    printf("info: healthy server already running (pid %d), skipping start\n", server_pid);
+                    fflush(stdout);
+                    exit(EXIT_SUCCESS);
+                }
+            }
+        }
+    }
+
+    // kill old server (only reached when no healthy server is registered)
     printf("info: killing old process...\n");
     fflush(stdout);
 
