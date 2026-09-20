@@ -17,10 +17,12 @@ import moe.shizuku.manager.AppConstants
 import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.ShizukuSettings.LaunchMethod
 import moe.shizuku.manager.adb.AdbClient
+import moe.shizuku.manager.adb.AdbException
 import moe.shizuku.manager.adb.AdbKey
 import moe.shizuku.manager.adb.AdbMdns
 import moe.shizuku.manager.adb.PreferenceAdbKeyStore
 import moe.shizuku.manager.starter.Starter
+import moe.shizuku.manager.utils.EnvironmentUtils
 import moe.shizuku.manager.utils.UserHandleCompat
 import rikka.shizuku.Shizuku
 import java.util.concurrent.CountDownLatch
@@ -49,7 +51,6 @@ class BootCompleteReceiver : BroadcastReceiver() {
 
     private fun rootStart(context: Context) {
         if (!Shell.getShell().isRoot) {
-            //NotificationHelper.notify(context, AppConstants.NOTIFICATION_ID_STATUS, AppConstants.NOTIFICATION_CHANNEL_STATUS, R.string.notification_service_start_no_root)
             Shell.getCachedShell()?.close()
             return
         }
@@ -60,87 +61,105 @@ class BootCompleteReceiver : BroadcastReceiver() {
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private fun adbStart(context: Context) {
         val cr = context.contentResolver
-        Settings.Global.putInt(cr, "adb_wifi_enabled", 1)
-        Settings.Global.putInt(cr, Settings.Global.ADB_ENABLED, 1)
+        // [fix-3] DO NOT put adb_wifi_enabled=1 here: on vivo OriginOS this wakes
+        // the wireless-debugging controller which force-resets persist.adb.tls_server.enable
+        // within ~30s. Only enable it later, if (and only if) we fall back to mDNS.
         Settings.Global.putLong(cr, "adb_allowed_connection_time", 0L)
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
+            try {
+                adbStartInner(context, cr)
+            } finally {
+                pending.finish()
+            }
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private fun adbStartInner(context: Context, cr: android.content.ContentResolver) {
+        // [fix-2] Stop as soon as the binder is actually up — never blindly
+        // restart a working server.
+        for (attempt in 1..3) {
+            try {
+                connectAndStart(cr)
+            } catch (_: Exception) {
+            }
+            if (Shizuku.pingBinder()) return // server is up — done
+            try { Thread.sleep(7000) } catch (_: InterruptedException) {}
+        }
+
+        // Last resort: mDNS (needs Wi-Fi). Enable the toggle only here —
+        // the controller reset no longer matters because direct connect failed.
+        try { Settings.Global.putInt(cr, "adb_wifi_enabled", 1) } catch (_: Exception) {}
+        if (Settings.Global.getInt(cr, "adb_wifi_enabled", 0) == 1) {
             val latch = CountDownLatch(1)
             val adbMdns = AdbMdns(context, AdbMdns.TLS_CONNECT) { port ->
                 if (port <= 0) return@AdbMdns
                 try {
-                    val keystore = PreferenceAdbKeyStore(ShizukuSettings.getPreferences())
-                    val key = AdbKey(keystore, "shizuku")
-                    val client = AdbClient("127.0.0.1", port, key)
-                    client.connect()
-                    client.shellCommand(Starter.internalCommand, null)
-                    client.close()
+                    connectAndStart(cr, port)
                 } catch (_: Exception) {
                 }
                 latch.countDown()
             }
-            // [port] 1) TLS port from the system property (survives reboot via
-            // persist.adb.tls_server.enable=1) — no Wi-Fi, no mDNS required.
-            var port = -1
-            try {
-                port = moe.shizuku.manager.utils.EnvironmentUtils.getAdbTlsPort()
-            } catch (_: Exception) {
-            }
-            // [port] 2) Fallback: scan /proc/net/tcp{,6} for local listeners.
-            if (port !in 1..65535) {
+            adbMdns.start()
+            latch.await(3, TimeUnit.SECONDS)
+            adbMdns.stop()
+        }
+    }
+
+    /**
+     * Discover a usable local adbd listener and run Starter.internalCommand over it.
+     * Discovery order (fastest / most reliable first):
+     *   1. service.adb.tcp.port / persist.adb.tcp.port / 5555 — vivo: this prop
+     *      is NOT policed by the wireless-debug controller and survives reboot
+     *      in persistent_properties (the no-Wi-Fi path)
+     *   2. service.adb.tls.port (TLS listener)
+     *   3. /proc/net/tcp{,6} scan incl. 5555 (fix-1: range was 30000..60999)
+     */
+    private fun connectAndStart(cr: android.content.ContentResolver, forcedPort: Int = -1) {
+        var port = forcedPort
+        if (port !in 1..65535) {
+            port = EnvironmentUtils.getAdbTcpPort() // service. or persist.adb.tcp.port
+            if (port !in 1..65535) port = 5555       // conventional adbd TCP port
+        }
+        if (port !in 1..65535) {
+            port = EnvironmentUtils.getAdbTlsPort()
+        }
+        // [fix-1] scan /proc/net/tcp{,6}: include 5555 and full 1..65535 range
+        if (port !in 1..65535) {
+            val ports = HashSet<Int>()
+            for (f in listOf("/proc/net/tcp", "/proc/net/tcp6")) {
                 try {
-                    val ports = HashSet<Int>()
-                    for (f in listOf("/proc/net/tcp", "/proc/net/tcp6")) {
-                        java.io.File(f).forEachLine { line ->
-                            val parts = line.trim().split(Regex("\\s+"))
-                            if (parts.size >= 4 && parts[3] == "0A") {
-                                val hex = parts[1].substringAfterLast(':')
-                                val p2 = hex.toIntOrNull(16)
-                                if (p2 != null && p2 in 30000..60999) ports.add(p2)
-                            }
+                    java.io.File(f).forEachLine { line ->
+                        val parts = line.trim().split(Regex("\\s+"))
+                        if (parts.size >= 4 && parts[3] == "0A") {
+                            val hex = parts[1].substringAfterLast(':')
+                            val p2 = hex.toIntOrNull(16)
+                            if (p2 != null) ports.add(p2)
                         }
                     }
-                    for (p2 in ports) {
-                        try {
-                            java.net.InetSocketAddress("127.0.0.1", p2).let {}
-                            val s = java.net.Socket()
-                            s.connect(java.net.InetSocketAddress("127.0.0.1", p2), 200)
-                            s.close()
-                            port = p2
-                            break
-                        } catch (_: Exception) {
-                        }
-                    }
-                } catch (_: Exception) {
-                }
+                } catch (_: Exception) {}
             }
-            if (port in 1..65535) {
-                // [port] Retry x3 with 7s gaps: on early boot the freshly started
-                // server's binder registration may hang while system_server initializes.
-                // Each attempt kills the old process and starts a fresh one.
-                for (attempt in 1..3) {
-                    try {
-                        val keystore = PreferenceAdbKeyStore(ShizukuSettings.getPreferences())
-                        val key = AdbKey(keystore, "shizuku")
-                        val client = AdbClient("127.0.0.1", port, key)
-                        client.connect()
-                        client.shellCommand(Starter.internalCommand, null)
-                        client.close()
-                        if (attempt < 3) {
-                            Thread.sleep(7000)
-                        }
-                    } catch (_: Exception) {
-                        try { Thread.sleep(7000) } catch (_: InterruptedException) {}
-                    }
-                }
+            // prefer 5555, then any other local listener that answers
+            for (p2 in sequenceOf(5555) + ports.filter { it != 5555 }.sorted()) {
+                try {
+                    val s = java.net.Socket()
+                    s.connect(java.net.InetSocketAddress("127.0.0.1", p2), 200)
+                    s.close()
+                    port = p2
+                    break
+                } catch (_: Exception) {}
             }
-            // [port] 3) mDNS as the last resort (original logic)
-            if (Settings.Global.getInt(cr, "adb_wifi_enabled", 0) == 1) {
-                adbMdns.start()
-                latch.await(3, TimeUnit.SECONDS)
-                adbMdns.stop()
-            }
-            pending.finish()
+        }
+        if (port in 1..65535) {
+            val keystore = PreferenceAdbKeyStore(ShizukuSettings.getPreferences())
+            val key = AdbKey(keystore, "shizuku")
+            val client = AdbClient("127.0.0.1", port, key)
+            client.connect()
+            client.shellCommand(Starter.internalCommand, null)
+            client.close()
+        } else {
+            throw AdbException("no adbd listener found")
         }
     }
 }
