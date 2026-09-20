@@ -77,15 +77,32 @@ class BootCompleteReceiver : BroadcastReceiver() {
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private fun adbStartInner(context: Context, cr: android.content.ContentResolver) {
-        // [fix-2] Stop as soon as the binder is actually up — never blindly
-        // restart a working server.
+        // [fix-3/retry] After dispatching the start command, poll the binder:
+        // the server registers asynchronously (1-3 s). Checking immediately
+        // (as the previous code did) always saw "not up" and restarted the
+        // server three times, killing each working instance.
+        //
+        // [concurrency] Check the binder BEFORE each attempt too: starter.cpp
+        // SIGKILLs every shizuku_server before forking a new one, so a
+        // concurrent session (or a second receiver invocation) must not
+        // kill a server another session just started. This check makes the
+        // ping-pong kill loop practically impossible: whoever sees the binder
+        // up first returns and leaves the server alone.
         for (attempt in 1..3) {
+            if (Shizuku.pingBinder()) return // a server (any session's) is already up
             try {
                 connectAndStart(cr)
             } catch (_: Exception) {
             }
-            if (Shizuku.pingBinder()) return // server is up — done
-            try { Thread.sleep(7000) } catch (_: InterruptedException) {}
+            // Poll for up to 5 s — binder comes up 1-3 s after the command.
+            for (i in 1..10) {
+                if (Shizuku.pingBinder()) return // server is up — done
+                try { Thread.sleep(500) } catch (_: InterruptedException) { return }
+            }
+            // binder still down after 5 s — next attempt (7 s extra backoff)
+            if (attempt < 3) {
+                try { Thread.sleep(2000) } catch (_: InterruptedException) { return }
+            }
         }
 
         // Last resort: mDNS (needs Wi-Fi). Enable the toggle only here —
@@ -108,58 +125,69 @@ class BootCompleteReceiver : BroadcastReceiver() {
     }
 
     /**
-     * Discover a usable local adbd listener and run Starter.internalCommand over it.
+     * [fix-1] Try EVERY candidate port in order instead of picking one and
+     * skipping the rest. Previously the TLS path was dead code because the
+     * default 5555 short-circuited the discovery chain.
+     *
      * Discovery order (fastest / most reliable first):
-     *   1. service.adb.tcp.port / persist.adb.tcp.port / 5555 — vivo: this prop
-     *      is NOT policed by the wireless-debug controller and survives reboot
+     *   1. forced port (mDNS result)
+     *   2. service.adb.tcp.port / persist.adb.tcp.port — vivo: this prop is
+     *      NOT policed by the wireless-debug controller and survives reboot
      *      in persistent_properties (the no-Wi-Fi path)
-     *   2. service.adb.tls.port (TLS listener)
-     *   3. /proc/net/tcp{,6} scan incl. 5555 (fix-1: range was 30000..60999)
+     *   3. 5555 (conventional adbd TCP port)
+     *   4. service.adb.tls.port (TLS listener)
+     *   5. /proc/net/tcp{,6} scan: 5555 first, then all local listeners
      */
     private fun connectAndStart(cr: android.content.ContentResolver, forcedPort: Int = -1) {
-        var port = forcedPort
-        if (port !in 1..65535) {
-            port = EnvironmentUtils.getAdbTcpPort() // service. or persist.adb.tcp.port
-            if (port !in 1..65535) port = 5555       // conventional adbd TCP port
+        val keystore = PreferenceAdbKeyStore(ShizukuSettings.getPreferences())
+        val key = AdbKey(keystore, "shizuku")
+
+        val candidates = ArrayList<Int>(8)
+        if (forcedPort in 1..65535) candidates.add(forcedPort)
+        runCatching { EnvironmentUtils.getAdbTcpPort() }.getOrNull()
+            ?.takeIf { it in 1..65535 }?.let { candidates.add(it) }
+        candidates.add(5555)
+        runCatching { EnvironmentUtils.getAdbTlsPort() }.getOrNull()
+            ?.takeIf { it in 1..65535 }?.let { candidates.add(it) }
+        candidates.addAll(scanProcNetTcp())
+
+        var lastError: Exception? = null
+        for (port in candidates.distinct()) {
+            if (port !in 1..65535) continue
+            var client: AdbClient? = null
+            try {
+                client = AdbClient("127.0.0.1", port, key)
+                client.connect()
+                client.shellCommand(Starter.internalCommand, null)
+                return // command dispatched — caller polls the binder
+            } catch (e: Exception) {
+                lastError = e
+            } finally {
+                runCatching { client?.close() }
+            }
         }
-        if (port !in 1..65535) {
-            port = EnvironmentUtils.getAdbTlsPort()
-        }
-        // [fix-1] scan /proc/net/tcp{,6}: include 5555 and full 1..65535 range
-        if (port !in 1..65535) {
-            val ports = HashSet<Int>()
-            for (f in listOf("/proc/net/tcp", "/proc/net/tcp6")) {
-                try {
-                    java.io.File(f).forEachLine { line ->
-                        val parts = line.trim().split(Regex("\\s+"))
-                        if (parts.size >= 4 && parts[3] == "0A") {
-                            val hex = parts[1].substringAfterLast(':')
-                            val p2 = hex.toIntOrNull(16)
-                            if (p2 != null) ports.add(p2)
-                        }
+        throw AdbException("no adbd listener found", lastError)
+    }
+
+    /** [fix-1] Full-range scan including 5555 (old range was 30000..60999). */
+    private fun scanProcNetTcp(): List<Int> {
+        val ports = HashSet<Int>()
+        for (f in listOf("/proc/net/tcp", "/proc/net/tcp6")) {
+            try {
+                java.io.File(f).forEachLine { line ->
+                    val parts = line.trim().split(Regex("\\s+"))
+                    if (parts.size >= 4 && parts[3] == "0A") { // 0A = LISTEN
+                        val hex = parts[1].substringAfterLast(':')
+                        val p = hex.toIntOrNull(16)
+                        if (p != null && p in 1..65535) ports.add(p)
                     }
-                } catch (_: Exception) {}
-            }
-            // prefer 5555, then any other local listener that answers
-            for (p2 in sequenceOf(5555) + ports.filter { it != 5555 }.sorted()) {
-                try {
-                    val s = java.net.Socket()
-                    s.connect(java.net.InetSocketAddress("127.0.0.1", p2), 200)
-                    s.close()
-                    port = p2
-                    break
-                } catch (_: Exception) {}
-            }
+                }
+            } catch (_: Exception) {}
         }
-        if (port in 1..65535) {
-            val keystore = PreferenceAdbKeyStore(ShizukuSettings.getPreferences())
-            val key = AdbKey(keystore, "shizuku")
-            val client = AdbClient("127.0.0.1", port, key)
-            client.connect()
-            client.shellCommand(Starter.internalCommand, null)
-            client.close()
-        } else {
-            throw AdbException("no adbd listener found")
-        }
+        // 5555 first (conventional adbd TCP), then everything else
+        val result = ArrayList<Int>(ports.size + 1)
+        result.add(5555)
+        result.addAll(ports.filter { it != 5555 }.sorted())
+        return result
     }
 }

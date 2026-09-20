@@ -28,6 +28,14 @@ private const val TAG = "AdbClient"
 
 class AdbClient(private val host: String, private val port: Int, private val key: AdbKey) : Closeable {
 
+    companion object {
+        /** [fix-2] TCP connect timeout — loopback refuses fast, but a black-holed listener must not hang. */
+        const val CONNECT_TIMEOUT_MS = 5_000
+
+        /** [fix-2] Read timeout — adbd that accepts but never answers must not freeze the retry loop. */
+        const val READ_TIMEOUT_MS = 10_000
+    }
+
     private lateinit var socket: Socket
     private lateinit var plainInputStream: DataInputStream
     private lateinit var plainOutputStream: DataOutputStream
@@ -42,8 +50,13 @@ class AdbClient(private val host: String, private val port: Int, private val key
     private val outputStream get() = if (useTls) tlsOutputStream else plainOutputStream
 
     fun connect() {
-        socket = Socket(host, port)
+        // [fix-2] connect with timeout and set read timeout: without these a
+        // half-open listener blocks readFully() forever and freezes the
+        // boot autostart retry loop on attempt 1.
+        socket = Socket()
         socket.tcpNoDelay = true
+        socket.connect(java.net.InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+        socket.soTimeout = READ_TIMEOUT_MS
         plainInputStream = DataInputStream(socket.getInputStream())
         plainOutputStream = DataOutputStream(socket.getOutputStream())
 
@@ -58,6 +71,7 @@ class AdbClient(private val host: String, private val port: Int, private val key
 
             val sslContext = key.sslContext
             tlsSocket = sslContext.socketFactory.createSocket(socket, host, port, true) as SSLSocket
+            tlsSocket.soTimeout = READ_TIMEOUT_MS // [fix-2] TLS reads must time out too
             tlsSocket.startHandshake()
             Log.d(TAG, "Handshake succeeded.")
 
@@ -77,7 +91,10 @@ class AdbClient(private val host: String, private val port: Int, private val key
                 }
             }
         } else if (message.command == A_AUTH) {
-            if (message.command != A_AUTH && message.arg0 != ADB_AUTH_TOKEN) error("not A_AUTH ADB_AUTH_TOKEN")
+            // [fix-4] was `message.command != A_AUTH && message.arg0 != ADB_AUTH_TOKEN`
+            // — inside this branch command is ALWAYS A_AUTH, so the && made the
+            // whole check dead. Must be || to reject a non-TOKEN A_AUTH.
+            if (message.arg0 != ADB_AUTH_TOKEN) error("not A_AUTH ADB_AUTH_TOKEN")
             write(A_AUTH, ADB_AUTH_SIGNATURE, 0, key.sign(message.data))
 
             message = read()
