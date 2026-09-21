@@ -152,34 +152,21 @@ class BootCompleteReceiver : BroadcastReceiver() {
         // the ANR window: a late start is better than a crash dialog.
         val deadline = System.currentTimeMillis() + BROADCAST_DEADLINE_MS
 
-        // [fix-3/retry] After dispatching the start command, poll the binder:
-        // the server registers asynchronously (1-3 s). Checking immediately
-        // (as the previous code did) always saw "not up" and restarted the
-        // server three times, killing each working instance.
-        //
-        // [concurrency] Check the binder BEFORE each attempt too: starter.cpp
-        // SIGKILLs every shizuku_server before forking a new one, so a
-        // concurrent session (or a second receiver invocation) must not
-        // kill a server another session just started. This check makes the
-        // ping-pong kill loop practically impossible: whoever sees the binder
-        // up first returns and leaves the server alone.
-        for (attempt in 1..3) {
-            if (pingBinderSafe()) return // a server (any session's) is already up
-            try {
-                connectAndStart(cr, deadline = deadline) // [fix-13] pass deadline
-            } catch (_: Exception) {
-            }
-            // Poll for up to 5 s — binder comes up 1-3 s after the command.
-            for (i in 1..10) {
-                if (pingBinderSafe()) return // server is up — done
-                try { Thread.sleep(500) } catch (_: InterruptedException) { return }
-                if (System.currentTimeMillis() > deadline) return // [fix-8] about to ANR
-            }
-            // binder still down after 5 s — next attempt (2 s extra backoff)
-            if (attempt < 3) {
-                try { Thread.sleep(2000) } catch (_: InterruptedException) { return }
-                if (System.currentTimeMillis() > deadline) return // [fix-8]
-            }
+        // [fix-19] starter.cpp now BLOCKS until the server's binder is
+        // registered (or its own 3 s timeout elapses). We only need a single
+        // attempt and a very short safety poll; the 5 s polling loop is gone.
+        if (pingBinderSafe()) return
+        try {
+            connectAndStart(cr, deadline = deadline)
+        } catch (_: Exception) {
+            return
+        }
+        // Safety: if starter timed out, wait just a little longer for the
+        // server that is already starting.
+        for (i in 1..5) {
+            if (pingBinderSafe()) return
+            try { Thread.sleep(100) } catch (_: InterruptedException) { return }
+            if (System.currentTimeMillis() > deadline) return
         }
 
         // Last resort: mDNS (needs Wi-Fi). Enable the toggle only here —

@@ -135,7 +135,36 @@ static void start_server(const char *path, const char *main_class, const char *p
         }
         default: {
             printf("info: shizuku_server pid is %d\n", pid);
-            printf("info: shizuku_starter exit with 0\n");
+            fflush(stdout);
+
+            // [fix-19] Block until the server's binder is ready (or timeout).
+            // This eliminates the need for callers to poll/retry and makes the
+            // start a single synchronous operation. The server sets the
+            // non-persistent property "shizuku.server.pid" immediately after
+            // its binder is registered, so the property's presence is a strong
+            // readiness signal.
+            static const int BINDER_READY_TIMEOUT_MS = 3000;
+            static const int POLL_INTERVAL_US = 50000; // 50ms
+            int waited_us = 0;
+            char pid_str[32] = {0};
+            while (waited_us < BINDER_READY_TIMEOUT_MS * 1000) {
+                __system_property_get("shizuku.server.pid", pid_str);
+                if (pid_str[0] != '\0') {
+                    int ready_pid = atoi(pid_str);
+                    if (ready_pid == pid) {
+                        printf("info: shizuku_starter exit with 0 (server ready)\n");
+                        fflush(stdout);
+                        exit(EXIT_SUCCESS);
+                    }
+                }
+                usleep(POLL_INTERVAL_US);
+                waited_us += POLL_INTERVAL_US;
+                pid_str[0] = '\0';
+            }
+
+            printf("warning: server pid %d started but binder not ready in %d ms, exiting anyway\n",
+                   pid, BINDER_READY_TIMEOUT_MS);
+            fflush(stdout);
             exit(EXIT_SUCCESS);
         }
     }
