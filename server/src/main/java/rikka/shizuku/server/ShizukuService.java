@@ -127,6 +127,11 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
         // context (e.g. when started via ADB as shell).
         try {
             int myPid = android.os.Process.myPid();
+            // Clean up any stale error log from previous debugging.
+            try {
+                new java.io.File("/data/local/tmp/.shizuku_ready.err").delete();
+            } catch (Throwable ignored) {
+            }
             java.io.File readinessFile = new java.io.File("/data/local/tmp/.shizuku_ready");
             try (java.io.FileWriter writer = new java.io.FileWriter(readinessFile, false)) {
                 writer.write(String.valueOf(myPid));
