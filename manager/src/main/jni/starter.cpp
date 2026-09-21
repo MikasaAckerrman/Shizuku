@@ -21,7 +21,8 @@
 #define JAVA_DEBUGGABLE
 #endif
 
-#define perrorf(...) fprintf(stderr, __VA_ARGS__)
+#define perrorf(...) fLOGPF(stderr, __VA_ARGS__)
+#define LOGPF(...) do { LOGPF(__VA_ARGS__); fflush(stdout); } while(0)
 
 #define EXIT_FATAL_SET_CLASSPATH 3
 #define EXIT_FATAL_FORK 4
@@ -66,7 +67,7 @@ v_current = (uintptr_t) v + v_size - sizeof(char *); \
 
 #define ARG_END(v) ARG_PUSH(v, nullptr)
 
-#define ARG_PUSH_FMT(v, fmt, ...) snprintf(buf_##v, PATH_MAX, fmt, __VA_ARGS__); \
+#define ARG_PUSH_FMT(v, fmt, ...) snLOGPF(buf_##v, PATH_MAX, fmt, __VA_ARGS__); \
     ARG_PUSH(v, buf_##v)
 
 #ifdef JAVA_DEBUGGABLE
@@ -93,7 +94,7 @@ v_current = (uintptr_t) v + v_size - sizeof(char *); \
 #endif
 
     char lib_path[PATH_MAX]{0};
-    snprintf(lib_path, PATH_MAX, "%s/lib/%s", dirname(dex_path), ABI);
+    snLOGPF(lib_path, PATH_MAX, "%s/lib/%s", dirname(dex_path), ABI);
 
     ARG(argv)
     ARG_PUSH(argv, "/system/bin/app_process")
@@ -134,7 +135,7 @@ static void start_server(const char *path, const char *main_class, const char *p
             run_server(path, main_class, process_name);
         }
         default: {
-            printf("info: shizuku_server pid is %d\n", pid);
+            LOGPF("info: shizuku_server pid is %d\n", pid);
             fflush(stdout);
 
             // [fix-19] Block until the server's binder is ready (or timeout).
@@ -143,7 +144,7 @@ static void start_server(const char *path, const char *main_class, const char *p
             // to /data/local/tmp/.shizuku_ready as soon as the binder is
             // registered; the file is on tmpfs and is cleared on reboot.
             static const int BINDER_READY_TIMEOUT_MS = 5000;
-            static const int POLL_INTERVAL_US = 50000; // 50ms
+            static const int POLL_INTERVAL_US = 20000; // 20ms
             static const char *READY_FILE = "/data/local/tmp/.shizuku_ready";
             int waited_us = 0;
             while (waited_us < BINDER_READY_TIMEOUT_MS * 1000) {
@@ -153,8 +154,7 @@ static void start_server(const char *path, const char *main_class, const char *p
                     int n = fscanf(fp, "%d", &ready_pid);
                     fclose(fp);
                     if (n == 1 && ready_pid == pid) {
-                        printf("info: shizuku_starter exit with 0 (server ready)\n");
-                        fflush(stdout);
+                        LOGPF("info: shizuku_starter exit with 0 (server ready)\n");
                         exit(EXIT_SUCCESS);
                     }
                 }
@@ -162,9 +162,8 @@ static void start_server(const char *path, const char *main_class, const char *p
                 waited_us += POLL_INTERVAL_US;
             }
 
-            printf("warning: server pid %d started but binder not ready in %d ms, exiting anyway\n",
+            LOGPF("warning: server pid %d started but binder not ready in %d ms, exiting anyway\n",
                    pid, BINDER_READY_TIMEOUT_MS);
-            fflush(stdout);
             exit(EXIT_SUCCESS);
         }
     }
@@ -175,7 +174,7 @@ static int check_selinux(const char *s, const char *t, const char *c, const char
 #ifndef DEBUG
     if (res != 0) {
 #endif
-    printf("info: selinux_check_access %s %s %s %s: %d\n", s, t, c, p, res);
+    LOGPF("info: selinux_check_access %s %s %s %s: %d\n", s, t, c, p, res);
     fflush(stdout);
 #ifndef DEBUG
     }
@@ -186,26 +185,26 @@ static int check_selinux(const char *s, const char *t, const char *c, const char
 static int switch_cgroup() {
     int pid = getpid();
     if (cgroup::switch_cgroup("/acct", pid)) {
-        printf("info: switch cgroup succeeded, cgroup in /acct\n");
+        LOGPF("info: switch cgroup succeeded, cgroup in /acct\n");
         return 0;
     }
     if (cgroup::switch_cgroup("/dev/cg2_bpf", pid)) {
-        printf("info: switch cgroup succeeded, cgroup in /dev/cg2_bpf\n");
+        LOGPF("info: switch cgroup succeeded, cgroup in /dev/cg2_bpf\n");
         return 0;
     }
     if (cgroup::switch_cgroup("/sys/fs/cgroup", pid)) {
-        printf("info: switch cgroup succeeded, cgroup in /sys/fs/cgroup\n");
+        LOGPF("info: switch cgroup succeeded, cgroup in /sys/fs/cgroup\n");
         return 0;
     }
     char buf[PROP_VALUE_MAX + 1];
     if (__system_property_get("ro.config.per_app_memcg", buf) > 0 &&
         strncmp(buf, "false", 5) != 0) {
         if (cgroup::switch_cgroup("/dev/memcg/apps", pid)) {
-            printf("info: switch cgroup succeeded, cgroup in /dev/memcg/apps\n");
+            LOGPF("info: switch cgroup succeeded, cgroup in /dev/memcg/apps\n");
             return 0;
         }
     }
-    printf("warn: can't switch cgroup\n");
+    LOGPF("warn: can't switch cgroup\n");
     fflush(stdout);
     return -1;
 }
@@ -230,7 +229,7 @@ int main(int argc, char *argv[]) {
         switch_cgroup();
 
         if (android_get_device_api_level() >= 29) {
-            printf("info: switching mount namespace to init...\n");
+            LOGPF("info: switching mount namespace to init...\n");
             switch_mnt_ns(1);
         }
     }
@@ -252,7 +251,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    printf("info: starter begin\n");
+    LOGPF("info: starter begin\n");
     fflush(stdout);
 
     // [fix-12] Idempotent start: if a healthy server is already running,
@@ -281,7 +280,7 @@ int main(int argc, char *argv[]) {
             char name[1024];
             if (get_proc_name(server_pid, name, 1024) == 0 &&
                 strcmp(SERVER_NAME, name) == 0) {
-                printf("info: healthy server already running (pid %d), skipping start\n", server_pid);
+                LOGPF("info: healthy server already running (pid %d), skipping start\n", server_pid);
                 fflush(stdout);
                 exit(EXIT_SUCCESS);
             }
@@ -289,7 +288,7 @@ int main(int argc, char *argv[]) {
     }
 
     // kill old server (only reached when no healthy server is registered)
-    printf("info: killing old process...\n");
+    LOGPF("info: killing old process...\n");
     fflush(stdout);
 
     foreach_proc([](pid_t pid) {
@@ -302,17 +301,17 @@ int main(int argc, char *argv[]) {
             return;
 
         if (kill(pid, SIGKILL) == 0)
-            printf("info: killed %d (%s)\n", pid, name);
+            LOGPF("info: killed %d (%s)\n", pid, name);
         else if (errno == EPERM) {
             perrorf("fatal: can't kill %d, please try to stop existing Shizuku from app first.\n", pid);
             exit(EXIT_FATAL_KILL);
         } else {
-            printf("warn: failed to kill %d (%s)\n", pid, name);
+            LOGPF("warn: failed to kill %d (%s)\n", pid, name);
         }
     });
 
     if (access(apk_path.c_str(), R_OK) == 0) {
-        printf("info: use apk path from argv\n");
+        LOGPF("info: use apk path from argv\n");
         fflush(stdout);
     }
 
@@ -334,13 +333,13 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FATAL_PM_PATH);
     }
 
-    printf("info: apk path is %s\n", apk_path.c_str());
+    LOGPF("info: apk path is %s\n", apk_path.c_str());
     if (access(apk_path.c_str(), R_OK) != 0) {
         perrorf("fatal: can't access manager %s\n", apk_path.c_str());
         exit(EXIT_FATAL_PM_PATH);
     }
 
-    printf("info: starting server...\n");
+    LOGPF("info: starting server...\n");
     fflush(stdout);
     LOGD("start_server");
     start_server(apk_path.c_str(), SERVER_CLASS_PATH, SERVER_NAME);

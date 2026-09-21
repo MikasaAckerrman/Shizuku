@@ -5,12 +5,15 @@ import android.os.Bundle
 import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.viewModelScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.topjohnwu.superuser.CallbackList
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import moe.shizuku.manager.AppConstants.EXTRA
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
@@ -48,6 +51,23 @@ class StarterActivity : AppBarActivity() {
 
         val binding = StarterActivityBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Fallback watchdog: even if output parsing misses the success marker,
+        // finish as soon as the binder responds.
+        lifecycleScope.launch(Dispatchers.IO) {
+            repeat(50) { // 50 x 200 ms = 10 s max
+                delay(200)
+                if (isFinishing) return@launch
+                if (viewModel.output.value?.status == Status.ERROR) return@launch
+                if (runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
+                    withContext(Dispatchers.Main) {
+                        viewModel.appendOutput("Shizuku successfully started")
+                        finishWithSuccess()
+                    }
+                    return@launch
+                }
+            }
+        }
 
         viewModel.output.observe(this) {
             val output = it.data!!.trim()
@@ -134,7 +154,7 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
         sb.append("Starting with root...").append('\n').append('\n')
         postResult()
 
-        GlobalScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(Dispatchers.IO) {
             // [fix-12] Same guard as startAdb: never kill a healthy server.
             if (runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
                 sb.append('\n').append("Service is already running, nothing to do.")
@@ -173,7 +193,7 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
         sb.append("Starting with $mode in port $port...").append('\n').append('\n')
         postResult()
 
-        GlobalScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(Dispatchers.IO) {
             // [fix-12] Don't kill a healthy server: the starter binary
             // SIGKILLs every shizuku_server process before forking a new one,
             // so pressing "Start" while the service is already up would
