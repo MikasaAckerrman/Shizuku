@@ -33,7 +33,6 @@ class HomeAdapter(private val homeModel: HomeViewModel, private val appsModel: A
         val grantedCount = appsModel.grantedCount.value?.data ?: 0
         val adbPermission = status.permission
         val running = status.isRunning
-        val isRoot = running && status.uid == 0
         val isPrimaryUser = UserHandleCompat.myUserId() == 0
 
         clear()
@@ -49,7 +48,7 @@ class HomeAdapter(private val homeModel: HomeViewModel, private val appsModel: A
         }
 
         if (isPrimaryUser) {
-            addItem(StartButtonViewHolder.CREATOR, StartButtonViewHolder.Data(running, isRoot), ID_START_BUTTON)
+            addItem(StartButtonViewHolder.CREATOR, null, ID_START_BUTTON)
         }
 
         addItem(LearnMoreViewHolder.CREATOR, null, ID_LEARN_MORE)
