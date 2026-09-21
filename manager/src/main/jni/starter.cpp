@@ -142,7 +142,7 @@ static void start_server(const char *path, const char *main_class, const char *p
             // start a single synchronous operation. The server writes its pid
             // to /data/local/tmp/.shizuku_ready as soon as the binder is
             // registered; the file is on tmpfs and is cleared on reboot.
-            static const int BINDER_READY_TIMEOUT_MS = 10000;
+            static const int BINDER_READY_TIMEOUT_MS = 5000;
             static const int POLL_INTERVAL_US = 50000; // 50ms
             static const char *READY_FILE = "/data/local/tmp/.shizuku_ready";
             int waited_us = 0;

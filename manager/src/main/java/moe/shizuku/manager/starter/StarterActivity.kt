@@ -51,21 +51,13 @@ class StarterActivity : AppBarActivity() {
 
         viewModel.output.observe(this) {
             val output = it.data!!.trim()
-            if (output.endsWith("info: shizuku_starter exit with 0")) {
-                viewModel.appendOutput("")
-                viewModel.appendOutput("Waiting for service...")
+            if (output.contains("info: shizuku_starter exit with 0")) {
+                viewModel.appendOutput("Shizuku successfully started")
+                finishWithSuccess()
+                return@observe
+            }
 
-                Shizuku.addBinderReceivedListener(object : Shizuku.OnBinderReceivedListener {
-                    override fun onBinderReceived() {
-                        Shizuku.removeBinderReceivedListener(this)
-                        viewModel.appendOutput("Service started, this window will be automatically closed in 3 seconds")
-
-                        window?.decorView?.postDelayed({
-                            if (!isFinishing) finish()
-                        }, 3000)
-                    }
-                })
-            } else if (it.status == Status.ERROR) {
+            if (it.status == Status.ERROR) {
                 var message = 0
                 when (it.error) {
                     is AdbKeyException -> {
@@ -90,6 +82,12 @@ class StarterActivity : AppBarActivity() {
                 }
             }
             binding.text1.text = output
+        }
+    }
+
+    private fun finishWithSuccess() {
+        if (!isFinishing) {
+            finish()
         }
     }
 
@@ -171,7 +169,8 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
     }
 
     private fun startAdb(host: String, port: Int) {
-        sb.append("Starting with wireless adb in port $port...").append('\n').append('\n')
+        val mode = if (port == 5555) "ADB" else "wireless adb"
+        sb.append("Starting with $mode in port $port...").append('\n').append('\n')
         postResult()
 
         GlobalScope.launch(Dispatchers.IO) {
