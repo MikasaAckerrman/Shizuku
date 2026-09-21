@@ -67,7 +67,7 @@ v_current = (uintptr_t) v + v_size - sizeof(char *); \
 
 #define ARG_END(v) ARG_PUSH(v, nullptr)
 
-#define ARG_PUSH_FMT(v, fmt, ...) snLOGPF(buf_##v, PATH_MAX, fmt, __VA_ARGS__); \
+#define ARG_PUSH_FMT(v, fmt, ...) snprintf(buf_##v, PATH_MAX, fmt, __VA_ARGS__); \
     ARG_PUSH(v, buf_##v)
 
 #ifdef JAVA_DEBUGGABLE
@@ -94,7 +94,7 @@ v_current = (uintptr_t) v + v_size - sizeof(char *); \
 #endif
 
     char lib_path[PATH_MAX]{0};
-    snLOGPF(lib_path, PATH_MAX, "%s/lib/%s", dirname(dex_path), ABI);
+    snprintf(lib_path, PATH_MAX, "%s/lib/%s", dirname(dex_path), ABI);
 
     ARG(argv)
     ARG_PUSH(argv, "/system/bin/app_process")
