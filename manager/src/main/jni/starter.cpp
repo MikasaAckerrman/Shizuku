@@ -284,7 +284,6 @@ int main(int argc, char *argv[]) {
                 printf("info: healthy server already running (pid %d), skipping start\n", server_pid);
                 fflush(stdout);
                 exit(EXIT_SUCCESS);
-                }
             }
         }
     }
