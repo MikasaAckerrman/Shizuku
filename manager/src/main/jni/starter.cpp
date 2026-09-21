@@ -21,8 +21,8 @@
 #define JAVA_DEBUGGABLE
 #endif
 
-#define perrorf(...) fLOGPF(stderr, __VA_ARGS__)
-#define LOGPF(...) do { LOGPF(__VA_ARGS__); fflush(stdout); } while(0)
+#define perrorf(...) fprintf(stderr, __VA_ARGS__)
+#define LOGPF(...) do { printf(__VA_ARGS__); fflush(stdout); } while(0)
 
 #define EXIT_FATAL_SET_CLASSPATH 3
 #define EXIT_FATAL_FORK 4
