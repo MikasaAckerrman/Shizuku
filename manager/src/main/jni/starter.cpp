@@ -139,19 +139,20 @@ static void start_server(const char *path, const char *main_class, const char *p
 
             // [fix-19] Block until the server's binder is ready (or timeout).
             // This eliminates the need for callers to poll/retry and makes the
-            // start a single synchronous operation. The server sets the
-            // non-persistent property "shizuku.server.pid" immediately after
-            // its binder is registered, so the property's presence is a strong
-            // readiness signal.
+            // start a single synchronous operation. The server writes its pid
+            // to /data/local/tmp/.shizuku_ready as soon as the binder is
+            // registered; the file is on tmpfs and is cleared on reboot.
             static const int BINDER_READY_TIMEOUT_MS = 3000;
             static const int POLL_INTERVAL_US = 50000; // 50ms
+            static const char *READY_FILE = "/data/local/tmp/.shizuku_ready";
             int waited_us = 0;
-            char pid_str[32] = {0};
             while (waited_us < BINDER_READY_TIMEOUT_MS * 1000) {
-                __system_property_get("shizuku.server.pid", pid_str);
-                if (pid_str[0] != '\0') {
-                    int ready_pid = atoi(pid_str);
-                    if (ready_pid == pid) {
+                FILE *fp = fopen(READY_FILE, "r");
+                if (fp != nullptr) {
+                    int ready_pid = 0;
+                    int n = fscanf(fp, "%d", &ready_pid);
+                    fclose(fp);
+                    if (n == 1 && ready_pid == pid) {
                         printf("info: shizuku_starter exit with 0 (server ready)\n");
                         fflush(stdout);
                         exit(EXIT_SUCCESS);
@@ -159,7 +160,6 @@ static void start_server(const char *path, const char *main_class, const char *p
                 }
                 usleep(POLL_INTERVAL_US);
                 waited_us += POLL_INTERVAL_US;
-                pid_str[0] = '\0';
             }
 
             printf("warning: server pid %d started but binder not ready in %d ms, exiting anyway\n",
@@ -261,22 +261,29 @@ int main(int argc, char *argv[]) {
     // session, receiver re-delivery, or accidental re-run would destroy
     // a working server and disconnect all active clients.
     //
-    // Health signal: the server sets "shizuku.server.pid" (a non-persist
-    // system property, cleared on reboot) right after its binder is
-    // registered. If the property exists, the pid is alive, and the
-    // process is actually shizuku_server, treat the server as healthy.
+    // Health signal: the server writes its pid to
+    // /data/local/tmp/.shizuku_ready as soon as its binder is registered.
+    // If that file exists, the pid is alive, and the process is actually
+    // shizuku_server, treat the server as healthy.
     {
-        char pid_str[32] = {0};
-        __system_property_get("shizuku.server.pid", pid_str);
-        if (pid_str[0] != '\0') {
-            int server_pid = atoi(pid_str);
-            if (server_pid > 0 && server_pid != getpid()) {
-                char name[1024];
-                if (get_proc_name(server_pid, name, 1024) == 0 &&
-                    strcmp(SERVER_NAME, name) == 0) {
-                    printf("info: healthy server already running (pid %d), skipping start\n", server_pid);
-                    fflush(stdout);
-                    exit(EXIT_SUCCESS);
+        int server_pid = 0;
+        FILE *fp = fopen("/data/local/tmp/.shizuku_ready", "r");
+        if (fp != nullptr) {
+            if (fscanf(fp, "%d", &server_pid) != 1) server_pid = 0;
+            fclose(fp);
+        }
+        if (server_pid <= 0) {
+            char pid_str[32] = {0};
+            __system_property_get("shizuku.server.pid", pid_str);
+            if (pid_str[0] != '\0') server_pid = atoi(pid_str);
+        }
+        if (server_pid > 0 && server_pid != getpid()) {
+            char name[1024];
+            if (get_proc_name(server_pid, name, 1024) == 0 &&
+                strcmp(SERVER_NAME, name) == 0) {
+                printf("info: healthy server already running (pid %d), skipping start\n", server_pid);
+                fflush(stdout);
+                exit(EXIT_SUCCESS);
                 }
             }
         }
