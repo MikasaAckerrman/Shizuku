@@ -17,7 +17,7 @@ import rikka.recyclerview.BaseViewHolder
 import rikka.recyclerview.BaseViewHolder.Creator
 import rikka.shizuku.Shizuku
 
-class StartButtonViewHolder(binding: HomeStartButtonBinding, root: View) :
+class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: View) :
     BaseViewHolder<Any?>(root) {
 
     companion object {
