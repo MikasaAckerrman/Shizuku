@@ -135,7 +135,12 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
             }
             // Best-effort: make it readable to the starter running in any context
             readinessFile.setReadable(true, false);
-        } catch (Throwable ignored) {
+        } catch (Throwable e) {
+            try (java.io.FileWriter w = new java.io.FileWriter("/data/local/tmp/.shizuku_ready.err", true)) {
+                w.write(String.valueOf(e));
+                w.write("\n");
+            } catch (Throwable ignored2) {
+            }
         }
 
         mainHandler.post(() -> {
