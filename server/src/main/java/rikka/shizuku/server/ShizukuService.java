@@ -127,20 +127,19 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
         // server's SELinux context (e.g. when started via ADB as shell).
         try {
             int myPid = android.os.Process.myPid();
-            android.os.SystemProperties.set("shizuku.server.pid", String.valueOf(myPid));
+            // Write the file first — it works under shell/root contexts.
             java.io.File readinessFile = new java.io.File("/data/local/tmp/.shizuku_ready");
-            readinessFile.delete();
-            try (java.io.FileWriter writer = new java.io.FileWriter(readinessFile)) {
+            try (java.io.FileWriter writer = new java.io.FileWriter(readinessFile, false)) {
                 writer.write(String.valueOf(myPid));
             }
-            // Best-effort: make it readable to the starter running in any context
+            // Make it readable to the starter running in any context.
             readinessFile.setReadable(true, false);
-        } catch (Throwable e) {
-            try (java.io.FileWriter w = new java.io.FileWriter("/data/local/tmp/.shizuku_ready.err", true)) {
-                w.write(String.valueOf(e));
-                w.write("\n");
-            } catch (Throwable ignored2) {
+            // Keep the property as a fallback, but don't fail if denied.
+            try {
+                android.os.SystemProperties.set("shizuku.server.pid", String.valueOf(myPid));
+            } catch (Throwable ignored) {
             }
+        } catch (Throwable ignored) {
         }
 
         mainHandler.post(() -> {
