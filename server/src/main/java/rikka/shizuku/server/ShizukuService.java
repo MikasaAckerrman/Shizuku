@@ -122,23 +122,16 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
         BinderSender.register(this);
 
         // [fix-19] Signal readiness as early as possible. The starter process
-        // waits for this signal. We use a tmpfs file instead of a system
-        // property because SystemProperties.set() may be denied under the
-        // server's SELinux context (e.g. when started via ADB as shell).
+        // waits for this signal. We use a tmpfs file because
+        // SystemProperties.set() may be denied under the server's SELinux
+        // context (e.g. when started via ADB as shell).
         try {
             int myPid = android.os.Process.myPid();
-            // Write the file first — it works under shell/root contexts.
             java.io.File readinessFile = new java.io.File("/data/local/tmp/.shizuku_ready");
             try (java.io.FileWriter writer = new java.io.FileWriter(readinessFile, false)) {
                 writer.write(String.valueOf(myPid));
             }
-            // Make it readable to the starter running in any context.
             readinessFile.setReadable(true, false);
-            // Keep the property as a fallback, but don't fail if denied.
-            try {
-                android.os.SystemProperties.set("shizuku.server.pid", String.valueOf(myPid));
-            } catch (Throwable ignored) {
-            }
         } catch (Throwable ignored) {
         }
 
