@@ -166,4 +166,12 @@ With %1$s, in any terminal app, you can connect to and interact with the shell r
     <string name="dialog_requesting_legacy_message"><![CDATA[<b>%1$s</b> has modern Shizuku support, but it\'s requesting legacy Shizuku. This could because Shizuku is not running, please check in Shizuku app.<p>Legacy Shizuku has been deprecated since March 2019.]]></string>
     <string name="dialog_requesting_legacy_button_open_shizuku">Open Shizuku</string>
 
+    <!-- Start method (custom) -->
+    <string name="home_start_button_title">Start Shizuku</string>
+    <string name="home_start_button_summary">Using %1$s</string>
+    <string name="settings_start_method">Start method</string>
+    <string name="start_method_adb_5555">ADB (port 5555)</string>
+    <string name="start_method_root">Root</string>
+    <string name="start_method_wireless">Wireless debugging</string>
+
 </resources>

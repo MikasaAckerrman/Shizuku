@@ -13,4 +13,16 @@
         <item>-1</item>
     </integer-array>
 
+    <string-array name="start_method_entries">
+        <item>@string/start_method_adb_5555</item>
+        <item>@string/start_method_root</item>
+        <item>@string/start_method_wireless</item>
+    </string-array>
+
+    <string-array name="start_method_values">
+        <item>adb_5555</item>
+        <item>root</item>
+        <item>wireless</item>
+    </string-array>
+
 </resources>

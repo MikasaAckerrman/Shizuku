@@ -10,6 +10,14 @@
             android:summary="@string/settings_start_on_boot_summary"
             android:title="@string/settings_start_on_boot" />
 
+        <ListPreference
+            android:defaultValue="adb_5555"
+            android:entries="@array/start_method_entries"
+            android:entryValues="@array/start_method_values"
+            android:key="preferred_start_method"
+            android:summary="%s"
+            android:title="@string/settings_start_method" />
+
     </PreferenceCategory>
 
     <PreferenceCategory android:title="@string/settings_language">

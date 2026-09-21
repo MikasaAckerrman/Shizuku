@@ -25,6 +25,11 @@ public class ShizukuSettings {
     public static final String NIGHT_MODE = "night_mode";
     public static final String LANGUAGE = "language";
     public static final String KEEP_START_ON_BOOT = "start_on_boot";
+    public static final String PREFERRED_START_METHOD = "preferred_start_method";
+
+    public static final String START_METHOD_ADB_5555 = "adb_5555";
+    public static final String START_METHOD_ROOT = "root";
+    public static final String START_METHOD_WIRELESS = "wireless";
 
     private static SharedPreferences sPreferences;
 
@@ -82,6 +87,14 @@ public class ShizukuSettings {
 
     public static void setLastLaunchMode(@LaunchMethod int method) {
         getPreferences().edit().putInt("mode", method).apply();
+    }
+
+    public static String getPreferredStartMethod() {
+        return getPreferences().getString(PREFERRED_START_METHOD, START_METHOD_ADB_5555);
+    }
+
+    public static void setPreferredStartMethod(String method) {
+        getPreferences().edit().putString(PREFERRED_START_METHOD, method).apply();
     }
 
     @AppCompatDelegate.NightMode

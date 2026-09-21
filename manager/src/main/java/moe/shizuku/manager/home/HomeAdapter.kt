@@ -1,8 +1,6 @@
 package moe.shizuku.manager.home
 
-import android.os.Build
 import moe.shizuku.manager.management.AppsViewModel
-import moe.shizuku.manager.utils.EnvironmentUtils
 import moe.shizuku.manager.utils.UserHandleCompat
 import rikka.recyclerview.IdBasedRecyclerViewAdapter
 import rikka.recyclerview.IndexCreatorPool
@@ -21,11 +19,9 @@ class HomeAdapter(private val homeModel: HomeViewModel, private val appsModel: A
         private const val ID_STATUS = 0L
         private const val ID_APPS = 1L
         private const val ID_TERMINAL = 2L
-        private const val ID_START_ROOT = 3L
-        private const val ID_START_WADB = 4L
-        private const val ID_START_ADB = 5L
-        private const val ID_LEARN_MORE = 6L
-        private const val ID_ADB_PERMISSION_LIMITED = 7L
+        private const val ID_START_BUTTON = 3L
+        private const val ID_LEARN_MORE = 4L
+        private const val ID_ADB_PERMISSION_LIMITED = 5L
     }
 
     override fun onCreateCreatorPool(): IndexCreatorPool {
@@ -37,6 +33,7 @@ class HomeAdapter(private val homeModel: HomeViewModel, private val appsModel: A
         val grantedCount = appsModel.grantedCount.value?.data ?: 0
         val adbPermission = status.permission
         val running = status.isRunning
+        val isRoot = running && status.uid == 0
         val isPrimaryUser = UserHandleCompat.myUserId() == 0
 
         clear()
@@ -52,23 +49,9 @@ class HomeAdapter(private val homeModel: HomeViewModel, private val appsModel: A
         }
 
         if (isPrimaryUser) {
-            val root = EnvironmentUtils.isRooted()
-            val rootRestart = running && status.uid == 0
-
-            if (root) {
-                addItem(StartRootViewHolder.CREATOR, rootRestart, ID_START_ROOT)
-            }
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R || EnvironmentUtils.getAdbTcpPort() > 0) {
-                addItem(StartWirelessAdbViewHolder.CREATOR, null, ID_START_WADB)
-            }
-
-            addItem(StartAdbViewHolder.CREATOR, null, ID_START_ADB)
-
-            if (!root) {
-                addItem(StartRootViewHolder.CREATOR, rootRestart, ID_START_ROOT)
-            }
+            addItem(StartButtonViewHolder.CREATOR, StartButtonViewHolder.Data(running, isRoot), ID_START_BUTTON)
         }
+
         addItem(LearnMoreViewHolder.CREATOR, null, ID_LEARN_MORE)
         notifyDataSetChanged()
     }
