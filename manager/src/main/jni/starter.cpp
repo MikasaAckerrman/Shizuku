@@ -8,6 +8,8 @@
 #include <libgen.h>
 #include <sys/stat.h>
 #include <sys/system_properties.h>
+#include <sys/resource.h>
+#include <sys/time.h>
 #include <sys/inotify.h>
 #include <poll.h>
 #include <cerrno>
@@ -176,6 +178,13 @@ v_current = (uintptr_t) v + v_size - sizeof(char *); \
 }
 
 static void start_server(const char *path, const char *main_class, const char *process_name) {
+    // [fix-22] Try to boost this process priority before forking. The child
+    // inherits it, giving the server a better chance to run on a laggy
+    // post-reboot system. This is best-effort and ignored if not allowed.
+    if (setpriority(PRIO_PROCESS, 0, -10) != 0) {
+        LOGD("setpriority(PRIO_PROCESS, 0, -10) failed, ignored");
+    }
+
     pid_t pid = fork();
     switch (pid) {
         case -1: {
@@ -204,7 +213,7 @@ static void start_server(const char *path, const char *main_class, const char *p
             // start a single synchronous operation. The server writes its pid
             // to /data/local/tmp/.shizuku_ready as soon as the binder is
             // registered; the file is on tmpfs and is cleared on reboot.
-            static const int BINDER_READY_TIMEOUT_MS = 10000;
+            static const int BINDER_READY_TIMEOUT_MS = 15000;
             static const char *READY_FILE = "/data/local/tmp/.shizuku_ready";
 
             bool ready = wait_for_binder_ready(pid, BINDER_READY_TIMEOUT_MS, READY_FILE);

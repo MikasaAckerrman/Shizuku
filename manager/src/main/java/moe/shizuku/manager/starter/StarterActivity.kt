@@ -55,7 +55,7 @@ class StarterActivity : AppBarActivity() {
         // Fallback watchdog: even if output parsing misses the success marker,
         // finish as soon as the binder responds.
         lifecycleScope.launch(Dispatchers.IO) {
-            repeat(100) { // 100 x 100 ms = 10 s max
+            repeat(150) { // 150 x 100 ms = 15 s max (post-reboot systems can be slow)
                 delay(100)
                 if (isFinishing) return@launch
                 if (viewModel.output.value?.status == Status.ERROR) return@launch
