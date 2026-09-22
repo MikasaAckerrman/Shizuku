@@ -1,6 +1,5 @@
 package moe.shizuku.manager.home
 
-import android.text.TextUtils
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -11,7 +10,6 @@ import moe.shizuku.manager.databinding.HomeServerStatusBinding
 import moe.shizuku.manager.model.ServiceStatus
 import rikka.recyclerview.BaseViewHolder
 import rikka.recyclerview.BaseViewHolder.Creator
-import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuApiConstants
 import rikka.shizuku.server.ServerConstants
 
@@ -66,10 +64,6 @@ class ServerStatusViewHolder(private val binding: HomeServerStatusBinding, root:
         }
         textView.text = title
         summaryView.text = summary
-        if (TextUtils.isEmpty(summaryView.text)) {
-            summaryView.visibility = View.GONE
-        } else {
-            summaryView.visibility = View.VISIBLE
-        }
+        summaryView.visibility = if (summary.isEmpty()) View.GONE else View.VISIBLE
     }
 }

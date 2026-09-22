@@ -9,7 +9,11 @@ import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.app.AppBarActivity
@@ -149,19 +153,24 @@ abstract class HomeActivity : AppBarActivity() {
                 true
             }
             R.id.action_stop -> {
-                if (!Shizuku.pingBinder()) {
-                    return true
-                }
-                MaterialAlertDialogBuilder(this)
-                    .setMessage(R.string.dialog_stop_message)
-                    .setPositiveButton(android.R.string.ok) { _: DialogInterface?, _: Int ->
-                        try {
-                            Shizuku.exit()
-                        } catch (e: Throwable) {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val running = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
+                    withContext(Dispatchers.Main) {
+                        if (!running) {
+                            return@withContext
                         }
+                        MaterialAlertDialogBuilder(this@HomeActivity)
+                            .setMessage(R.string.dialog_stop_message)
+                            .setPositiveButton(android.R.string.ok) { _: DialogInterface?, _: Int ->
+                                try {
+                                    Shizuku.exit()
+                                } catch (e: Throwable) {
+                                }
+                            }
+                            .setNegativeButton(android.R.string.cancel, null)
+                            .show()
                     }
-                    .setNegativeButton(android.R.string.cancel, null)
-                    .show()
+                }
                 true
             }
             R.id.action_settings -> {

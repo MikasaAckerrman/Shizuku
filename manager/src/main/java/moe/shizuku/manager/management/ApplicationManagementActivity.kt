@@ -4,7 +4,11 @@ import android.os.Bundle
 import android.util.TypedValue
 import android.view.MenuItem
 import android.widget.Toast
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView.AdapterDataObserver
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import moe.shizuku.manager.Helps
 import moe.shizuku.manager.R
 import moe.shizuku.manager.app.AppBarActivity
@@ -30,11 +34,21 @@ class ApplicationManagementActivity : AppBarActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        if (!Shizuku.pingBinder()) {
-            finish()
-            return
+        lifecycleScope.launch {
+            val running = withContext(Dispatchers.IO) {
+                runCatching { Shizuku.pingBinder() }.getOrDefault(false)
+            }
+            if (!running) {
+                if (!isFinishing) {
+                    finish()
+                }
+                return@launch
+            }
+            setupUi()
         }
+    }
 
+    private fun setupUi() {
         val binding = AppsActivityBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -48,40 +62,38 @@ class ApplicationManagementActivity : AppBarActivity() {
                 Status.ERROR -> {
                     finish()
                     val tr = it.error
-                    Toast.makeText(this, Objects.toString(tr, "unknown"), Toast.LENGTH_SHORT).show()
                     tr.printStackTrace()
-                }
-                Status.LOADING -> {
-
+                    Toast.makeText(this, tr.toString(), Toast.LENGTH_SHORT).show()
                 }
             }
         }
-        if (viewModel.packages.value == null) {
-            viewModel.load()
-        }
+        viewModel.load()
 
         val recyclerView = binding.list
         recyclerView.adapter = adapter
         recyclerView.fixEdgeEffect()
-        recyclerView.addEdgeSpacing(top = 8f, bottom = 8f, unit = TypedValue.COMPLEX_UNIT_DIP)
-
+        recyclerView.addEdgeSpacing(top = 8f, bottom = 8f, left = 24f, right = 24f, unit = TypedValue.COMPLEX_UNIT_DIP)
+        recyclerView.setHasFixedSize(true)
         adapter.registerAdapterDataObserver(object : AdapterDataObserver() {
-            override fun onItemRangeChanged(positionStart: Int, itemCount: Int, payload: Any?) {
-                viewModel.load(true)
+            override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
+                if (positionStart == 0) {
+                    recyclerView.scrollToPosition(0)
+                }
             }
         })
 
         Shizuku.addBinderDeadListener(binderDeadListener)
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-
-        Shizuku.removeBinderDeadListener(binderDeadListener)
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return if (item.itemId == android.R.id.home) {
+            finish()
+            true
+        } else super.onOptionsItemSelected(item)
     }
 
-    override fun onResume() {
-        super.onResume()
-        adapter.notifyDataSetChanged()
+    override fun onDestroy() {
+        super.onDestroy()
+        Shizuku.removeBinderDeadListener(binderDeadListener)
     }
 }
