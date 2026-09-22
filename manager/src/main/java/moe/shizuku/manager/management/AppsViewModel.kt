@@ -34,6 +34,8 @@ class AppsViewModel(context: Context) : ViewModel() {
     fun load(onlyCount: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                // Refresh cache on every load so external changes are picked up.
+                AuthorizationManager.clearCache()
                 var count = 0
                 val list = if (onlyCount) null else ArrayList<PackageInfo>()
                 for (pi in AuthorizationManager.getPackages()) {

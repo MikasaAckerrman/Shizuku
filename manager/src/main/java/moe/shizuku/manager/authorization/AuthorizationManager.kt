@@ -11,12 +11,17 @@ import rikka.shizuku.server.ServerConstants
 import rikka.parcelablelist.ParcelableListSlice
 import rikka.shizuku.Shizuku
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 
 object AuthorizationManager {
 
     private const val FLAG_ALLOWED = 1 shl 1
     private const val FLAG_DENIED = 1 shl 2
     private const val MASK_PERMISSION = FLAG_ALLOWED or FLAG_DENIED
+
+    // Cache grant status per UID to avoid repeated binder calls when scrolling
+    // through the app list. Invalidated when grant/revoke is called.
+    private val grantCache: MutableMap<Int, Boolean> = ConcurrentHashMap()
 
     private fun getApplications(userId: Int): List<PackageInfo> {
         val data = Parcel.obtain()
@@ -63,11 +68,14 @@ object AuthorizationManager {
     }
 
     fun granted(packageName: String, uid: Int): Boolean {
-        return if (Shizuku.isPreV11()) {
+        grantCache[uid]?.let { return it }
+        val result = if (Shizuku.isPreV11()) {
             ShizukuSystemApis.checkPermission(Manifest.permission.API_V23, packageName, uid / 100000) == PackageManager.PERMISSION_GRANTED
         } else {
             (Shizuku.getFlagsForUid(uid, MASK_PERMISSION) and FLAG_ALLOWED) == FLAG_ALLOWED
         }
+        grantCache[uid] = result
+        return result
     }
 
     fun grant(packageName: String, uid: Int) {
@@ -76,6 +84,7 @@ object AuthorizationManager {
         } else {
             Shizuku.updateFlagsForUid(uid, MASK_PERMISSION, FLAG_ALLOWED)
         }
+        grantCache.remove(uid)
     }
 
     fun revoke(packageName: String, uid: Int) {
@@ -84,5 +93,14 @@ object AuthorizationManager {
         } else {
             Shizuku.updateFlagsForUid(uid, MASK_PERMISSION, 0)
         }
+        grantCache.remove(uid)
+    }
+
+    /**
+     * Clears the in-memory grant cache. Should be called when the list is refreshed,
+     * so that stale values are not reused after external changes.
+     */
+    fun clearCache() {
+        grantCache.clear()
     }
 }
