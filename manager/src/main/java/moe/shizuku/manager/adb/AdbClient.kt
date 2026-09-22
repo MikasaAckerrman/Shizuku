@@ -39,6 +39,9 @@ class AdbClient(
          *  right after boot may take several seconds before adbd accepts. */
         const val CONNECT_TIMEOUT_MS = 10_000
 
+        /** [fix-2] Read timeout — adbd that accepts but never answers must not freeze the retry loop. */
+        const val READ_TIMEOUT_MS = 10_000
+
         /** [fix-9] Upper bound for a single ADB message payload. */
         const val MAX_DATA_LENGTH = 1_048_576
     }
