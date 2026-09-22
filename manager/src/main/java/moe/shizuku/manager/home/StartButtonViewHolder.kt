@@ -11,6 +11,7 @@ import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.databinding.HomeItemContainerBinding
 import moe.shizuku.manager.databinding.HomeStartButtonBinding
 import moe.shizuku.manager.starter.StarterActivity
+import moe.shizuku.manager.starter.StarterService
 import moe.shizuku.manager.utils.EnvironmentUtils
 import rikka.core.content.asActivity
 import rikka.recyclerview.BaseViewHolder
