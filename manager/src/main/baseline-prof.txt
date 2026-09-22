@@ -1,0 +1,56 @@
+# Baseline Profile for Shizuku Manager
+# These classes and methods are marked as hot/startup paths to improve cold start.
+
+# Application entry
+HPLmoe/shizuku/manager/ShizukuApplication;
+PLmoe/shizuku/manager/ShizukuApplication;->onCreate()V
+
+# Main activity and its UI
+HPLmoe/shizuku/manager/home/HomeActivity;
+PLmoe/shizuku/manager/home/HomeActivity;->onCreate(Landroid/os/Bundle;)V
+
+HPLmoe/shizuku/manager/home/HomeAdapter;
+HPLmoe/shizuku/manager/home/HomeViewModel;
+
+# Main card view holders
+HPLmoe/shizuku/manager/home/StartButtonViewHolder;
+HPLmoe/shizuku/manager/home/StartButtonViewHolder$Companion;
+PLmoe/shizuku/manager/home/StartButtonViewHolder;->onBind(Ljava/lang/Object;)V
+
+HPLmoe/shizuku/manager/home/StartRootViewHolder;
+HPLmoe/shizuku/manager/home/StartRootViewHolder$Companion;
+PLmoe/shizuku/manager/home/StartRootViewHolder;->onBind(Ljava/lang/Object;)V
+
+HPLmoe/shizuku/manager/home/ServerStatusViewHolder;
+HPLmoe/shizuku/manager/home/ServerStatusViewHolder$Companion;
+PLmoe/shizuku/manager/home/ServerStatusViewHolder;->onBind(Ljava/lang/Object;)V
+
+HPLmoe/shizuku/manager/home/ManageAppsViewHolder;
+HPLmoe/shizuku/manager/home/ManageAppsViewHolder$Companion;
+PLmoe/shizuku/manager/home/ManageAppsViewHolder;->onBind(Ljava/lang/Object;)V
+
+HPLmoe/shizuku/manager/home/TerminalViewHolder;
+HPLmoe/shizuku/manager/home/TerminalViewHolder$Companion;
+PLmoe/shizuku/manager/home/TerminalViewHolder;->onBind(Ljava/lang/Object;)V
+
+# Models and status
+HPLmoe/shizuku/manager/model/ServiceStatus;
+PLmoe/shizuku/manager/model/ServiceStatus;-><init>(IIILjava/lang/String;Z)V
+PLmoe/shizuku/manager/model/ServiceStatus;-><init>()V
+
+# Starter service (critical for quick launch)
+HPLmoe/shizuku/manager/starter/StarterService;
+PLmoe/shizuku/manager/starter/StarterService;->onCreate()V
+PLmoe/shizuku/manager/starter/StarterService;->onStartCommand(Landroid/content/Intent;II)I
+
+HPLmoe/shizuku/manager/starter/StarterActivity;
+PLmoe/shizuku/manager/starter/StarterActivity;->onCreate(Landroid/os/Bundle;)V
+
+HPLmoe/shizuku/manager/starter/StarterState;
+
+# ADB key and client
+HPLmoe/shizuku/manager/adb/AdbKey;
+HPLmoe/shizuku/manager/adb/AdbClient;
+
+# Authorization manager
+HPLmoe/shizuku/manager/authorization/AuthorizationManager;
