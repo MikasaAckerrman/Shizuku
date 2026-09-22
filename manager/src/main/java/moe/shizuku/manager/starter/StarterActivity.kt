@@ -55,8 +55,8 @@ class StarterActivity : AppBarActivity() {
         // Fallback watchdog: even if output parsing misses the success marker,
         // finish as soon as the binder responds.
         lifecycleScope.launch(Dispatchers.IO) {
-            repeat(50) { // 50 x 200 ms = 10 s max
-                delay(200)
+            repeat(100) { // 100 x 100 ms = 10 s max
+                delay(100)
                 if (isFinishing) return@launch
                 if (viewModel.output.value?.status == Status.ERROR) return@launch
                 if (runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
@@ -214,18 +214,33 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
                 return@launch
             }
 
-            AdbClient(host, port, key).runCatching {
-                connect()
-                shellCommand(Starter.internalCommand) {
-                    sb.append(String(it))
+            var lastError: Throwable? = null
+            var success = false
+            for (attempt in 0 until 3) {
+                if (attempt > 0) {
+                    sb.append("\n[retry ADB connection attempt ${attempt + 1}/3]\n")
                     postResult()
+                    Thread.sleep(200)
                 }
-                close()
-            }.onFailure {
-                it.printStackTrace()
+                try {
+                    AdbClient(host, port, key).use { client ->
+                        client.connect()
+                        client.shellCommand(Starter.internalCommand) {
+                            sb.append(String(it))
+                            postResult()
+                        }
+                    }
+                    success = true
+                    break
+                } catch (e: Throwable) {
+                    lastError = e
+                    e.printStackTrace()
+                }
+            }
 
-                sb.append('\n').append(Log.getStackTraceString(it))
-                postResult(it)
+            if (!success) {
+                sb.append('\n').append(Log.getStackTraceString(lastError))
+                postResult(lastError ?: RuntimeException("ADB connection failed after 3 attempts"))
             }
         }
     }

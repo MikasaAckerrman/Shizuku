@@ -8,6 +8,8 @@
 #include <libgen.h>
 #include <sys/stat.h>
 #include <sys/system_properties.h>
+#include <sys/inotify.h>
+#include <poll.h>
 #include <cerrno>
 #include <string>
 #include <termios.h>
@@ -45,6 +47,65 @@
 #elif defined(__aarch64__)
 #define ABI "arm64"
 #endif
+
+static bool read_ready_pid(const char *ready_file, int expected_pid) {
+    FILE *fp = fopen(ready_file, "r");
+    if (fp == nullptr) return false;
+    int ready_pid = 0;
+    int n = fscanf(fp, "%d", &ready_pid);
+    fclose(fp);
+    return n == 1 && ready_pid == expected_pid;
+}
+
+static bool wait_for_binder_ready(int pid, int timeout_ms, const char *ready_file) {
+    // Fast path: already ready.
+    if (read_ready_pid(ready_file, pid)) return true;
+
+    // Use inotify for instant notification when the server writes the file.
+    int inotify_fd = inotify_init1(IN_CLOEXEC);
+    int watch_fd = -1;
+    bool use_inotify = false;
+    if (inotify_fd >= 0) {
+        watch_fd = inotify_add_watch(inotify_fd, "/data/local/tmp",
+                                     IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE | IN_MODIFY);
+        if (watch_fd >= 0) {
+            use_inotify = true;
+        }
+    }
+
+    int elapsed_ms = 0;
+    const int poll_ms = 20;
+    while (elapsed_ms < timeout_ms) {
+        if (read_ready_pid(ready_file, pid)) {
+            if (use_inotify) {
+                inotify_rm_watch(inotify_fd, watch_fd);
+                close(inotify_fd);
+            }
+            return true;
+        }
+
+        if (use_inotify) {
+            struct pollfd pfd = { inotify_fd, POLLIN, 0 };
+            int ret = poll(&pfd, 1, poll_ms);
+            if (ret > 0 && (pfd.revents & POLLIN)) {
+                char buf[1024];
+                ssize_t n = read(inotify_fd, buf, sizeof(buf));
+                (void)n;
+                // Event consumed; next loop iteration will read the file.
+                continue;
+            }
+        } else {
+            usleep(poll_ms * 1000);
+        }
+        elapsed_ms += poll_ms;
+    }
+
+    if (use_inotify) {
+        inotify_rm_watch(inotify_fd, watch_fd);
+        close(inotify_fd);
+    }
+    return read_ready_pid(ready_file, pid);
+}
 
 static void run_server(const char *dex_path, const char *main_class, const char *process_name) {
     if (setenv("CLASSPATH", dex_path, true)) {
@@ -143,27 +204,16 @@ static void start_server(const char *path, const char *main_class, const char *p
             // start a single synchronous operation. The server writes its pid
             // to /data/local/tmp/.shizuku_ready as soon as the binder is
             // registered; the file is on tmpfs and is cleared on reboot.
-            static const int BINDER_READY_TIMEOUT_MS = 5000;
-            static const int POLL_INTERVAL_US = 20000; // 20ms
+            static const int BINDER_READY_TIMEOUT_MS = 10000;
             static const char *READY_FILE = "/data/local/tmp/.shizuku_ready";
-            int waited_us = 0;
-            while (waited_us < BINDER_READY_TIMEOUT_MS * 1000) {
-                FILE *fp = fopen(READY_FILE, "r");
-                if (fp != nullptr) {
-                    int ready_pid = 0;
-                    int n = fscanf(fp, "%d", &ready_pid);
-                    fclose(fp);
-                    if (n == 1 && ready_pid == pid) {
-                        LOGPF("info: shizuku_starter exit with 0 (server ready)\n");
-                        exit(EXIT_SUCCESS);
-                    }
-                }
-                usleep(POLL_INTERVAL_US);
-                waited_us += POLL_INTERVAL_US;
-            }
 
-            LOGPF("warning: server pid %d started but binder not ready in %d ms, exiting anyway\n",
-                   pid, BINDER_READY_TIMEOUT_MS);
+            bool ready = wait_for_binder_ready(pid, BINDER_READY_TIMEOUT_MS, READY_FILE);
+            if (ready) {
+                LOGPF("info: shizuku_starter exit with 0 (server ready)\n");
+            } else {
+                LOGPF("warning: server pid %d started but binder not ready in %d ms, exiting anyway\n",
+                       pid, BINDER_READY_TIMEOUT_MS);
+            }
             exit(EXIT_SUCCESS);
         }
     }
