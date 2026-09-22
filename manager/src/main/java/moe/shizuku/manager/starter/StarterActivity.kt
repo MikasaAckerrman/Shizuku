@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.view.View
 import android.widget.Toast
 import moe.shizuku.manager.AppConstants.EXTRA
 import moe.shizuku.manager.R
@@ -29,6 +30,7 @@ import rikka.lifecycle.Status
 import rikka.lifecycle.viewModels
 import rikka.shizuku.Shizuku
 import java.net.ConnectException
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.SSLProtocolException
 
 private class NotRootedException : Exception()
@@ -45,6 +47,8 @@ class StarterActivity : AppBarActivity() {
     }
 
     private val silent by lazy { intent.getBooleanExtra(EXTRA_SILENT, false) }
+    private var binding: StarterActivityBinding? = null
+    private val successHandled = AtomicBoolean(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // In silent mode the user just tapped "Start" and does not want to see
@@ -61,8 +65,14 @@ class StarterActivity : AppBarActivity() {
             supportActionBar?.hide()
         }
 
-        val binding = StarterActivityBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+        // In silent mode we start with an empty transparent view. The real
+        // terminal layout is inflated only if something goes wrong.
+        if (silent) {
+            setContentView(View(this))
+        } else {
+            binding = StarterActivityBinding.inflate(layoutInflater)
+            setContentView(binding!!.root)
+        }
 
         // Fallback watchdog: even if output parsing misses the success marker,
         // finish as soon as the binder responds.
@@ -90,6 +100,12 @@ class StarterActivity : AppBarActivity() {
             }
 
             if (it.status == Status.ERROR) {
+                // On error in silent mode we finally inflate and show the terminal.
+                if (silent && binding == null) {
+                    binding = StarterActivityBinding.inflate(layoutInflater)
+                    setContentView(binding!!.root)
+                }
+
                 var message = 0
                 when (it.error) {
                     is AdbKeyException -> {
@@ -113,11 +129,12 @@ class StarterActivity : AppBarActivity() {
                         .show()
                 }
             }
-            binding.text1.text = output
+            binding?.text1?.text = output
         }
     }
 
     private fun finishWithSuccess(showToast: Boolean) {
+        if (successHandled.getAndSet(true)) return
         if (showToast) {
             Toast.makeText(this, "Shizuku started", Toast.LENGTH_SHORT).show()
         }
