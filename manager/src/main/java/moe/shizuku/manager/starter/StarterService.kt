@@ -51,6 +51,8 @@ class StarterService : Service() {
             return START_NOT_STICKY
         }
 
+        StarterState.setStarting(true)
+
         val root = intent.getBooleanExtra(EXTRA_IS_ROOT, true)
         val host = intent.getStringExtra(EXTRA_HOST)
         val port = intent.getIntExtra(EXTRA_PORT, 0)
@@ -94,16 +96,20 @@ class StarterService : Service() {
         notificationManager.notify(NOTIFICATION_ID, buildNotification(text, ongoing))
     }
 
-    private fun finishSuccess() {
+    private fun finishSuccess(showToast: Boolean = true) {
+        StarterState.setStarting(false)
         updateNotification("Shizuku started", false)
         scope.launch(Dispatchers.Main) {
-            Toast.makeText(this@StarterService, "Shizuku started", Toast.LENGTH_SHORT).show()
+            if (showToast) {
+                Toast.makeText(this@StarterService, "Shizuku started", Toast.LENGTH_SHORT).show()
+            }
             kotlinx.coroutines.delay(1500)
             stopSelf()
         }
     }
 
     private fun finishError(throwable: Throwable) {
+        StarterState.setStarting(false)
         updateNotification("Shizuku failed - tap for details", false)
         val intent = Intent(this, StarterActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -121,7 +127,7 @@ class StarterService : Service() {
         scope.launch {
             if (runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
                 sb.append("Service is already running, nothing to do.\n")
-                finishSuccess()
+                finishSuccess(false)
                 return@launch
             }
 
@@ -157,7 +163,7 @@ class StarterService : Service() {
         scope.launch {
             if (runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
                 sb.append("Service is already running, nothing to do.\n")
-                finishSuccess()
+                finishSuccess(false)
                 return@launch
             }
 

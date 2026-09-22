@@ -6,12 +6,13 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.core.view.isVisible
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Observer
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.databinding.HomeItemContainerBinding
 import moe.shizuku.manager.databinding.HomeStartButtonBinding
-import moe.shizuku.manager.starter.StarterActivity
 import moe.shizuku.manager.starter.StarterService
+import moe.shizuku.manager.starter.StarterState
 import moe.shizuku.manager.utils.EnvironmentUtils
 import rikka.core.content.asActivity
 import rikka.recyclerview.BaseViewHolder
@@ -29,11 +30,22 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
         }
     }
 
+    private var stateObserver: Observer<Boolean>? = null
+
     init {
         binding.button1.setOnClickListener { v: View -> onStartClicked(v) }
+        binding.root.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {}
+            override fun onViewDetachedFromWindow(v: View) {
+                stateObserver?.let { StarterState.isStarting.removeObserver(it) }
+                stateObserver = null
+            }
+        })
     }
 
     private fun onStartClicked(v: View) {
+        if (StarterState.isStarting.value == true) return
+        StarterState.setStarting(true)
         val context = v.context
         when (ShizukuSettings.getPreferredStartMethod()) {
             ShizukuSettings.START_METHOD_ROOT -> {
@@ -66,6 +78,12 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
     }
 
     override fun onBind() {
+        updateButtonState()
+
+        stateObserver?.let { StarterState.isStarting.removeObserver(it) }
+        stateObserver = Observer { updateButtonState() }
+        StarterState.isStarting.observeForever(stateObserver!!)
+
         val running = Shizuku.pingBinder()
         val uid = if (running) {
             try {
@@ -75,8 +93,6 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
             }
         } else -1
         val isRoot = running && uid == 0
-
-        binding.button1.isEnabled = true
 
         if (running) {
             binding.text1.text = context.getString(
@@ -99,5 +115,12 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
         }
 
         binding.text2.isVisible = true
+    }
+
+    private fun updateButtonState() {
+        val running = Shizuku.pingBinder()
+        val starting = StarterState.isStarting.value == true
+        binding.button1.isEnabled = !running && !starting
+        binding.button1.alpha = if (binding.button1.isEnabled) 1.0f else 0.5f
     }
 }
