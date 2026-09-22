@@ -85,36 +85,17 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
         stateObserver = Observer { updateButtonState(running) }
         StarterState.isStarting.observeForever(stateObserver!!)
 
-        val uid = if (running) {
-            try {
-                Shizuku.getUid()
-            } catch (e: Throwable) {
-                -1
-            }
-        } else -1
-        val isRoot = running && uid == 0
-
-        if (running) {
-            binding.text1.text = context.getString(
-                R.string.home_status_service_is_running,
-                context.getString(R.string.app_name)
-            )
-            binding.text2.text = "Running as " + if (isRoot) "root" else "shell"
-        } else {
-            binding.text1.text = context.getString(
-                R.string.home_status_service_not_running,
-                context.getString(R.string.app_name)
-            )
-
+        if (!running) {
             val methodName = when (ShizukuSettings.getPreferredStartMethod()) {
                 ShizukuSettings.START_METHOD_ROOT -> context.getString(R.string.start_method_root)
                 ShizukuSettings.START_METHOD_WIRELESS -> context.getString(R.string.start_method_wireless)
                 else -> context.getString(R.string.start_method_adb_5555)
             }
             binding.text2.text = context.getString(R.string.home_start_button_summary, methodName)
+            binding.text2.isVisible = true
+        } else {
+            binding.text2.isVisible = false
         }
-
-        binding.text2.isVisible = true
     }
 
     private fun updateButtonState(running: Boolean = Shizuku.pingBinder()) {

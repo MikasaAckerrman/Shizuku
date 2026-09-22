@@ -5,34 +5,25 @@
     style="?homeCardStyle"
     android:orientation="vertical">
 
-    <TextView
-        android:id="@android:id/text1"
-        style="@style/CardTitle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center"
-        android:text="@string/home_status_service_not_running"
-        tools:text="Shizuku is not running" />
-
     <com.google.android.material.button.MaterialButton
         android:id="@android:id/button1"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:minHeight="64dp"
+        android:minHeight="48dp"
         android:text="@string/home_start_button_title"
-        android:textSize="16sp"
+        android:textSize="14sp"
         app:icon="@drawable/ic_server_start_24dp"
         app:iconGravity="textStart"
-        app:iconSize="24dp" />
+        app:iconSize="20dp" />
 
     <TextView
         android:id="@android:id/text2"
-        style="@style/CardContent"
+        style="@style/CardSummary"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="4dp"
         android:gravity="center"
+        android:textSize="12sp"
         tools:text="Using ADB (port 5555)" />
 
 </LinearLayout>

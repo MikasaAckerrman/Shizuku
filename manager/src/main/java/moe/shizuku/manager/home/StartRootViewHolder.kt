@@ -4,7 +4,6 @@ import android.content.Intent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.core.view.isVisible
 import moe.shizuku.manager.R
 import moe.shizuku.manager.databinding.HomeItemContainerBinding
 import moe.shizuku.manager.databinding.HomeStartRootButtonBinding
@@ -39,9 +38,8 @@ class StartRootViewHolder(private val binding: HomeStartRootButtonBinding, root:
 
     override fun onBind() {
         val running = Shizuku.pingBinder()
-        binding.button.isEnabled = !running && StarterState.isStarting.value != true
+        val starting = StarterState.isStarting.value == true
+        binding.button.isEnabled = !running && !starting
         binding.button.alpha = if (binding.button.isEnabled) 1.0f else 0.5f
-        binding.text1.isVisible = true
-        binding.text2.isVisible = true
     }
 }
