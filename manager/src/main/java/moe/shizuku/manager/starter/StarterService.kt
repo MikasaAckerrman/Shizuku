@@ -10,6 +10,7 @@ import android.os.IBinder
 import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationCompat
 import com.topjohnwu.superuser.CallbackList
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.CoroutineScope
@@ -80,7 +81,7 @@ class StarterService : Service() {
 
     private fun buildNotification(text: String, ongoing: Boolean): android.app.Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_system_icon)
             .setContentTitle("Shizuku")
             .setContentText(text)
             .setOngoing(ongoing)
@@ -129,7 +130,7 @@ class StarterService : Service() {
                 sb.append("Can't open root shell, try again...\n")
                 if (!Shell.getShell().isRoot) {
                     sb.append("Still not :(\n")
-                    finishError(NotRootedException())
+                    finishError(RuntimeException("Root start failed"))
                     return@launch
                 }
             }
@@ -143,7 +144,7 @@ class StarterService : Service() {
                     finishSuccess()
                 } else {
                     sb.append("Send this to developer may help solve the problem.\n")
-                    finishError(it.exception ?: RuntimeException("Root start failed"))
+                    finishError(RuntimeException("Root start failed"))
                 }
             }
         }
