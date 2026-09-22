@@ -1,10 +1,10 @@
 package moe.shizuku.manager.home
 
 import moe.shizuku.manager.management.AppsViewModel
+import moe.shizuku.manager.model.ServiceStatus
 import moe.shizuku.manager.utils.UserHandleCompat
 import rikka.recyclerview.IdBasedRecyclerViewAdapter
 import rikka.recyclerview.IndexCreatorPool
-import rikka.shizuku.Shizuku
 
 class HomeAdapter(private val homeModel: HomeViewModel, private val appsModel: AppsViewModel) :
     IdBasedRecyclerViewAdapter(ArrayList()) {
@@ -28,9 +28,7 @@ class HomeAdapter(private val homeModel: HomeViewModel, private val appsModel: A
         return IndexCreatorPool()
     }
 
-    fun updateData() {
-        val status = homeModel.serviceStatus.value?.data ?: return
-        val grantedCount = appsModel.grantedCount.value?.data ?: 0
+    private fun buildItems(status: ServiceStatus, grantedCount: Int) {
         val adbPermission = status.permission
         val running = status.isRunning
         val isPrimaryUser = UserHandleCompat.myUserId() == 0
@@ -51,7 +49,30 @@ class HomeAdapter(private val homeModel: HomeViewModel, private val appsModel: A
             addItem(StartButtonViewHolder.CREATOR, status, ID_START_BUTTON)
             addItem(StartRootViewHolder.CREATOR, status, ID_START_ROOT)
         }
+    }
 
+    fun updateData() {
+        val status = homeModel.serviceStatus.value?.data ?: return
+        val grantedCount = appsModel.grantedCount.value?.data ?: 0
+        buildItems(status, grantedCount)
         notifyDataSetChanged()
+    }
+
+    /**
+     * Updates only the granted app count. Reuses the current [ServiceStatus]
+     * and rebuilds the item list, then dispatches a single item-changed event
+     * for the ManageApps card. This avoids re-binding all visible cards when
+     * only the counter changes.
+     */
+    fun updateGrantedCount(grantedCount: Int) {
+        val status = homeModel.serviceStatus.value?.data ?: return
+        if (!status.permission) {
+            // ManageApps is not shown when the server has no permission.
+            // Nothing to update.
+            return
+        }
+        buildItems(status, grantedCount)
+        // ManageApps is always at position 1: ServerStatus (0), ManageApps (1).
+        notifyItemChanged(1)
     }
 }
