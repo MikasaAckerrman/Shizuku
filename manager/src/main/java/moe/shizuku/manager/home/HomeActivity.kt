@@ -15,6 +15,7 @@ import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.app.AppBarActivity
 import moe.shizuku.manager.databinding.AboutDialogBinding
 import moe.shizuku.manager.databinding.HomeActivityBinding
+import moe.shizuku.manager.model.ServiceStatus
 import moe.shizuku.manager.ktx.toHtml
 import moe.shizuku.manager.management.appsViewModel
 import moe.shizuku.manager.settings.SettingsActivity
@@ -42,6 +43,9 @@ abstract class HomeActivity : AppBarActivity() {
     private val appsModel by appsViewModel()
     private val adapter by unsafeLazy { HomeAdapter(homeModel, appsModel) }
 
+    private var lastServiceStatus: ServiceStatus? = null
+    private var lastGrantedCount: Int = -1
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -51,13 +55,17 @@ abstract class HomeActivity : AppBarActivity() {
         homeModel.serviceStatus.observe(this) {
             if (it.status == Status.SUCCESS) {
                 val status = homeModel.serviceStatus.value?.data ?: return@observe
-                adapter.updateData()
+                if (statusChanged(status)) {
+                    adapter.updateData()
+                }
                 ShizukuSettings.setLastLaunchMode(if (status.uid == 0) ShizukuSettings.LaunchMethod.ROOT else ShizukuSettings.LaunchMethod.ADB)
             }
         }
         appsModel.grantedCount.observe(this) {
             if (it.status == Status.SUCCESS) {
-                adapter.updateData()
+                if (grantedCountChanged(it.data)) {
+                    adapter.updateData()
+                }
             }
         }
 
@@ -69,6 +77,26 @@ abstract class HomeActivity : AppBarActivity() {
 
         Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
         Shizuku.addBinderDeadListener(binderDeadListener)
+    }
+
+    private fun statusChanged(status: ServiceStatus?): Boolean {
+        if (status == null) return false
+        val last = lastServiceStatus
+        lastServiceStatus = status
+        return last == null ||
+                last.isRunning != status.isRunning ||
+                last.uid != status.uid ||
+                last.permission != status.permission ||
+                last.apiVersion != status.apiVersion ||
+                last.patchVersion != status.patchVersion ||
+                last.seContext != status.seContext
+    }
+
+    private fun grantedCountChanged(count: Int?): Boolean {
+        if (count == null) return false
+        val changed = lastGrantedCount != count
+        lastGrantedCount = count
+        return changed
     }
 
     private var lastResume = 0L
