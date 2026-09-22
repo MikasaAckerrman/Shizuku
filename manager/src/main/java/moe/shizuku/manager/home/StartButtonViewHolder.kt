@@ -38,6 +38,7 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
             ShizukuSettings.START_METHOD_ROOT -> {
                 context.startActivity(Intent(context, StarterActivity::class.java).apply {
                     putExtra(StarterActivity.EXTRA_IS_ROOT, true)
+                    putExtra(StarterActivity.EXTRA_SILENT, true)
                 })
             }
             ShizukuSettings.START_METHOD_WIRELESS -> {
@@ -47,6 +48,7 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
                         putExtra(StarterActivity.EXTRA_IS_ROOT, false)
                         putExtra(StarterActivity.EXTRA_HOST, "127.0.0.1")
                         putExtra(StarterActivity.EXTRA_PORT, port)
+                        putExtra(StarterActivity.EXTRA_SILENT, true)
                     })
                 } else {
                     WadbNotEnabledDialogFragment().show(
@@ -59,6 +61,7 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
                     putExtra(StarterActivity.EXTRA_IS_ROOT, false)
                     putExtra(StarterActivity.EXTRA_HOST, "127.0.0.1")
                     putExtra(StarterActivity.EXTRA_PORT, 5555)
+                    putExtra(StarterActivity.EXTRA_SILENT, true)
                 })
             }
         }

@@ -163,6 +163,10 @@ v_current = (uintptr_t) v + v_size - sizeof(char *); \
     ARG_PUSH(argv, "/system/bin/app_process")
     ARG_PUSH_FMT(argv, "-Djava.class.path=%s", dex_path)
     ARG_PUSH_FMT(argv, "-Dshizuku.library.path=%s", lib_path)
+    // [fix-23] Limit initial heap for faster cold start, but keep a safe
+    // ceiling so PackageManager-heavy operations don't OOM.
+    ARG_PUSH(argv, "-Xms4m")
+    ARG_PUSH(argv, "-Xmx512m")
     ARG_PUSH_DEBUG_VM_PARAMS(argv)
     ARG_PUSH(argv, "/system/bin")
     ARG_PUSH_FMT(argv, "--nice-name=%s", process_name)

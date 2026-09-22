@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.widget.Toast
 import moe.shizuku.manager.AppConstants.EXTRA
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
@@ -43,11 +44,22 @@ class StarterActivity : AppBarActivity() {
         )
     }
 
+    private val silent by lazy { intent.getBooleanExtra(EXTRA_SILENT, false) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        // In silent mode the user just tapped "Start" and does not want to see
+        // the terminal unless something goes wrong. Use a transparent theme so
+        // nothing flashes; on success we finish before anything is drawn.
+        if (silent) {
+            setTheme(android.R.style.Theme_Translucent_NoTitleBar)
+        }
         super.onCreate(savedInstanceState)
 
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.setHomeAsUpIndicator(R.drawable.ic_close_24)
+        if (silent) {
+            supportActionBar?.hide()
+        }
 
         val binding = StarterActivityBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -62,7 +74,7 @@ class StarterActivity : AppBarActivity() {
                 if (runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
                     withContext(Dispatchers.Main) {
                         viewModel.appendOutput("Shizuku successfully started")
-                        finishWithSuccess()
+                        finishWithSuccess(silent)
                     }
                     return@launch
                 }
@@ -73,7 +85,7 @@ class StarterActivity : AppBarActivity() {
             val output = it.data!!.trim()
             if (output.contains("info: shizuku_starter exit with 0")) {
                 viewModel.appendOutput("Shizuku successfully started")
-                finishWithSuccess()
+                finishWithSuccess(silent)
                 return@observe
             }
 
@@ -105,7 +117,10 @@ class StarterActivity : AppBarActivity() {
         }
     }
 
-    private fun finishWithSuccess() {
+    private fun finishWithSuccess(showToast: Boolean) {
+        if (showToast) {
+            Toast.makeText(this, "Shizuku started", Toast.LENGTH_SHORT).show()
+        }
         if (!isFinishing) {
             finish()
         }
@@ -116,6 +131,7 @@ class StarterActivity : AppBarActivity() {
         const val EXTRA_IS_ROOT = "$EXTRA.IS_ROOT"
         const val EXTRA_HOST = "$EXTRA.HOST"
         const val EXTRA_PORT = "$EXTRA.PORT"
+        const val EXTRA_SILENT = "$EXTRA.SILENT"
     }
 }
 
