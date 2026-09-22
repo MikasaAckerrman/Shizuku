@@ -2,55 +2,56 @@
 # These classes and methods are marked as hot/startup paths to improve cold start.
 
 # Application entry
-HPLmoe/shizuku/manager/ShizukuApplication;
-PLmoe/shizuku/manager/ShizukuApplication;->onCreate()V
+Lmoe/shizuku/manager/ShizukuApplication;
+HSPLmoe/shizuku/manager/ShizukuApplication;->onCreate()V
 
 # Main activity and its UI
-HPLmoe/shizuku/manager/home/HomeActivity;
-PLmoe/shizuku/manager/home/HomeActivity;->onCreate(Landroid/os/Bundle;)V
+Lmoe/shizuku/manager/home/HomeActivity;
+HSPLmoe/shizuku/manager/home/HomeActivity;->onCreate(Landroid/os/Bundle;)V
 
-HPLmoe/shizuku/manager/home/HomeAdapter;
-HPLmoe/shizuku/manager/home/HomeViewModel;
+Lmoe/shizuku/manager/home/HomeAdapter;
+HSPLmoe/shizuku/manager/home/HomeAdapter;-><init>(Lrikka/shizuku/manager/Shizuku;Ljava/util/List;)V
+HSPLmoe/shizuku/manager/home/HomeAdapter;->onCreateViewHolder(Landroid/view/ViewGroup;I)Lrikka/shizuku/manager/home/HomeAdapter$ViewHolder;
+HSPLmoe/shizuku/manager/home/HomeAdapter;->onBindViewHolder(Lrikka/shizuku/manager/home/HomeAdapter$ViewHolder;I)V
+
+Lmoe/shizuku/manager/home/HomeViewModel;
+HSPLmoe/shizuku/manager/home/HomeViewModel;-><init>()V
+HSPLmoe/shizuku/manager/home/HomeViewModel;->load()V
 
 # Main card view holders
-HPLmoe/shizuku/manager/home/StartButtonViewHolder;
-HPLmoe/shizuku/manager/home/StartButtonViewHolder$Companion;
-PLmoe/shizuku/manager/home/StartButtonViewHolder;->onBind(Ljava/lang/Object;)V
+Lmoe/shizuku/manager/home/StartButtonViewHolder;
+HSPLmoe/shizuku/manager/home/StartButtonViewHolder;->onBind(Ljava/lang/Object;)V
 
-HPLmoe/shizuku/manager/home/StartRootViewHolder;
-HPLmoe/shizuku/manager/home/StartRootViewHolder$Companion;
-PLmoe/shizuku/manager/home/StartRootViewHolder;->onBind(Ljava/lang/Object;)V
+Lmoe/shizuku/manager/home/StartRootViewHolder;
+HSPLmoe/shizuku/manager/home/StartRootViewHolder;->onBind(Ljava/lang/Object;)V
 
-HPLmoe/shizuku/manager/home/ServerStatusViewHolder;
-HPLmoe/shizuku/manager/home/ServerStatusViewHolder$Companion;
-PLmoe/shizuku/manager/home/ServerStatusViewHolder;->onBind(Ljava/lang/Object;)V
+Lmoe/shizuku/manager/home/ServerStatusViewHolder;
+HSPLmoe/shizuku/manager/home/ServerStatusViewHolder;->onBind(Ljava/lang/Object;)V
 
-HPLmoe/shizuku/manager/home/ManageAppsViewHolder;
-HPLmoe/shizuku/manager/home/ManageAppsViewHolder$Companion;
-PLmoe/shizuku/manager/home/ManageAppsViewHolder;->onBind(Ljava/lang/Object;)V
+Lmoe/shizuku/manager/home/ManageAppsViewHolder;
+HSPLmoe/shizuku/manager/home/ManageAppsViewHolder;->onBind(Ljava/lang/Object;)V
 
-HPLmoe/shizuku/manager/home/TerminalViewHolder;
-HPLmoe/shizuku/manager/home/TerminalViewHolder$Companion;
-PLmoe/shizuku/manager/home/TerminalViewHolder;->onBind(Ljava/lang/Object;)V
+Lmoe/shizuku/manager/home/TerminalViewHolder;
+HSPLmoe/shizuku/manager/home/TerminalViewHolder;->onBind(Ljava/lang/Object;)V
 
 # Models and status
-HPLmoe/shizuku/manager/model/ServiceStatus;
-PLmoe/shizuku/manager/model/ServiceStatus;-><init>(IIILjava/lang/String;Z)V
-PLmoe/shizuku/manager/model/ServiceStatus;-><init>()V
+Lmoe/shizuku/manager/model/ServiceStatus;
+HSPLmoe/shizuku/manager/model/ServiceStatus;-><init>(IIILjava/lang/String;Z)V
+HSPLmoe/shizuku/manager/model/ServiceStatus;-><init>()V
 
 # Starter service (critical for quick launch)
-HPLmoe/shizuku/manager/starter/StarterService;
-PLmoe/shizuku/manager/starter/StarterService;->onCreate()V
-PLmoe/shizuku/manager/starter/StarterService;->onStartCommand(Landroid/content/Intent;II)I
+Lmoe/shizuku/manager/starter/StarterService;
+HSPLmoe/shizuku/manager/starter/StarterService;->onCreate()V
+HSPLmoe/shizuku/manager/starter/StarterService;->onStartCommand(Landroid/content/Intent;II)I
 
-HPLmoe/shizuku/manager/starter/StarterActivity;
-PLmoe/shizuku/manager/starter/StarterActivity;->onCreate(Landroid/os/Bundle;)V
+Lmoe/shizuku/manager/starter/StarterActivity;
+HSPLmoe/shizuku/manager/starter/StarterActivity;->onCreate(Landroid/os/Bundle;)V
 
-HPLmoe/shizuku/manager/starter/StarterState;
+Lmoe/shizuku/manager/starter/StarterState;
 
 # ADB key and client
-HPLmoe/shizuku/manager/adb/AdbKey;
-HPLmoe/shizuku/manager/adb/AdbClient;
+Lmoe/shizuku/manager/adb/AdbKey;
+Lmoe/shizuku/manager/adb/AdbClient;
 
 # Authorization manager
-HPLmoe/shizuku/manager/authorization/AuthorizationManager;
+Lmoe/shizuku/manager/authorization/AuthorizationManager;
