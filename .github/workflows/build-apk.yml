@@ -42,14 +42,14 @@ jobs:
             echo "KEYSTORE_ALIAS_PASSWORD=$KS_PW"
           } > signing.properties
 
-      - name: Build debug APK
+      - name: Build release APK
         run: |
           yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null || true
           export GRADLE_OPTS="-Xmx4g"
-          ./gradlew :manager:assembleDebug --stacktrace -x :manager:lint
-          find manager/build/outputs/apk/debug -name "*.apk" -type f
+          ./gradlew :manager:assembleRelease --stacktrace -x :manager:lint
+          find manager/build/outputs/apk/release -name "*.apk" -type f
 
       - uses: actions/upload-artifact@v4
         with:
-          name: shizuku-debug-apk
-          path: manager/build/outputs/apk/debug/*.apk
+          name: shizuku-release-apk
+          path: manager/build/outputs/apk/release/*.apk
