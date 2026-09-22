@@ -85,7 +85,6 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
         stateObserver = Observer { updateButtonState(running) }
         StarterState.isStarting.observeForever(stateObserver!!)
 
-        val running = Shizuku.pingBinder()
         val uid = if (running) {
             try {
                 Shizuku.getUid()
