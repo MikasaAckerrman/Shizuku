@@ -36,19 +36,17 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
         val context = v.context
         when (ShizukuSettings.getPreferredStartMethod()) {
             ShizukuSettings.START_METHOD_ROOT -> {
-                context.startActivity(Intent(context, StarterActivity::class.java).apply {
-                    putExtra(StarterActivity.EXTRA_IS_ROOT, true)
-                    putExtra(StarterActivity.EXTRA_SILENT, true)
+                context.startService(Intent(context, StarterService::class.java).apply {
+                    putExtra(StarterService.EXTRA_IS_ROOT, true)
                 })
             }
             ShizukuSettings.START_METHOD_WIRELESS -> {
                 val port = EnvironmentUtils.getAdbTcpPort()
                 if (port > 0) {
-                    context.startActivity(Intent(context, StarterActivity::class.java).apply {
-                        putExtra(StarterActivity.EXTRA_IS_ROOT, false)
-                        putExtra(StarterActivity.EXTRA_HOST, "127.0.0.1")
-                        putExtra(StarterActivity.EXTRA_PORT, port)
-                        putExtra(StarterActivity.EXTRA_SILENT, true)
+                    context.startService(Intent(context, StarterService::class.java).apply {
+                        putExtra(StarterService.EXTRA_IS_ROOT, false)
+                        putExtra(StarterService.EXTRA_HOST, "127.0.0.1")
+                        putExtra(StarterService.EXTRA_PORT, port)
                     })
                 } else {
                     WadbNotEnabledDialogFragment().show(
@@ -57,11 +55,10 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
                 }
             }
             else -> {
-                context.startActivity(Intent(context, StarterActivity::class.java).apply {
-                    putExtra(StarterActivity.EXTRA_IS_ROOT, false)
-                    putExtra(StarterActivity.EXTRA_HOST, "127.0.0.1")
-                    putExtra(StarterActivity.EXTRA_PORT, 5555)
-                    putExtra(StarterActivity.EXTRA_SILENT, true)
+                context.startService(Intent(context, StarterService::class.java).apply {
+                    putExtra(StarterService.EXTRA_IS_ROOT, false)
+                    putExtra(StarterService.EXTRA_HOST, "127.0.0.1")
+                    putExtra(StarterService.EXTRA_PORT, 5555)
                 })
             }
         }

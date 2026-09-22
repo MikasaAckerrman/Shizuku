@@ -143,6 +143,12 @@
             android:exported="false"
             android:foregroundServiceType="shortService" />
 
+        <service
+            android:name=".starter.StarterService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="shortService" />
+
         <receiver
             android:name=".receiver.BootCompleteReceiver"
             android:directBootAware="true"

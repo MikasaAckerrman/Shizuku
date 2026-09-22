@@ -51,9 +51,6 @@ class StarterActivity : AppBarActivity() {
     private val successHandled = AtomicBoolean(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // In silent mode the user just tapped "Start" and does not want to see
-        // the terminal unless something goes wrong. Use a transparent theme so
-        // nothing flashes; on success we finish before anything is drawn.
         if (silent) {
             setTheme(android.R.style.Theme_Translucent_NoTitleBar)
         }
@@ -65,8 +62,16 @@ class StarterActivity : AppBarActivity() {
             supportActionBar?.hide()
         }
 
-        // In silent mode we start with an empty transparent view. The real
-        // terminal layout is inflated only if something goes wrong.
+        val providedOutput = intent.getStringExtra(EXTRA_OUTPUT)
+        if (providedOutput != null) {
+            // Started from StarterService on error: just display the output.
+            binding = StarterActivityBinding.inflate(layoutInflater)
+            setContentView(binding!!.root)
+            binding?.text1?.text = providedOutput
+            return
+        }
+
+        // Silent mode: empty view until an error forces us to show the terminal.
         if (silent) {
             setContentView(View(this))
         } else {
@@ -100,7 +105,6 @@ class StarterActivity : AppBarActivity() {
             }
 
             if (it.status == Status.ERROR) {
-                // On error in silent mode we finally inflate and show the terminal.
                 if (silent && binding == null) {
                     binding = StarterActivityBinding.inflate(layoutInflater)
                     setContentView(binding!!.root)
@@ -149,6 +153,7 @@ class StarterActivity : AppBarActivity() {
         const val EXTRA_HOST = "$EXTRA.HOST"
         const val EXTRA_PORT = "$EXTRA.PORT"
         const val EXTRA_SILENT = "$EXTRA.SILENT"
+        const val EXTRA_OUTPUT = "$EXTRA.OUTPUT"
     }
 }
 
