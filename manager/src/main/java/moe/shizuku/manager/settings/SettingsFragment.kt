@@ -43,6 +43,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
     private lateinit var translationPreference: Preference
     private lateinit var translationContributorsPreference: Preference
     private lateinit var useSystemColorPreference: TwoStatePreference
+    private lateinit var learnMorePreference: Preference
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         val context = requireContext()
@@ -60,6 +61,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
         translationPreference = findPreference("translation")!!
         translationContributorsPreference = findPreference("translation_contributors")!!
         useSystemColorPreference = findPreference(KEY_USE_SYSTEM_COLOR)!!
+        learnMorePreference = findPreference("learn_more")!!
 
         val componentName = ComponentName(context.packageName, BootCompleteReceiver::class.java.name)
 
@@ -129,6 +131,11 @@ class SettingsFragment : PreferenceFragmentCompat() {
             context.getString(R.string.settings_translation_summary, context.getString(R.string.app_name))
         translationPreference.setOnPreferenceClickListener {
             CustomTabsHelper.launchUrlOrCopy(context, context.getString(R.string.translation_url))
+            true
+        }
+
+        learnMorePreference.setOnPreferenceClickListener {
+            CustomTabsHelper.launchUrlOrCopy(context, "https://github.com/MikasaAckerrman/Shizuku")
             true
         }
 

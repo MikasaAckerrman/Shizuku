@@ -61,4 +61,13 @@
 
     </PreferenceCategory>
 
+    <PreferenceCategory android:title="@string/settings_about">
+
+        <Preference
+            android:key="learn_more"
+            android:title="@string/settings_learn_more"
+            android:summary="@string/settings_learn_more_summary" />
+
+    </PreferenceCategory>
+
 </PreferenceScreen>

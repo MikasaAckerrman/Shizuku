@@ -20,7 +20,7 @@ class HomeAdapter(private val homeModel: HomeViewModel, private val appsModel: A
         private const val ID_APPS = 1L
         private const val ID_TERMINAL = 2L
         private const val ID_START_BUTTON = 3L
-        private const val ID_LEARN_MORE = 4L
+        private const val ID_START_ROOT = 4L
         private const val ID_ADB_PERMISSION_LIMITED = 5L
     }
 
@@ -49,9 +49,9 @@ class HomeAdapter(private val homeModel: HomeViewModel, private val appsModel: A
 
         if (isPrimaryUser) {
             addItem(StartButtonViewHolder.CREATOR, null, ID_START_BUTTON)
+            addItem(StartRootViewHolder.CREATOR, null, ID_START_ROOT)
         }
 
-        addItem(LearnMoreViewHolder.CREATOR, null, ID_LEARN_MORE)
         notifyDataSetChanged()
     }
 }
