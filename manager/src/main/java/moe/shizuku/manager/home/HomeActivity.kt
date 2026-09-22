@@ -67,8 +67,9 @@ abstract class HomeActivity : AppBarActivity() {
         }
         appsModel.grantedCount.observe(this) {
             if (it.status == Status.SUCCESS) {
-                if (grantedCountChanged(it.data)) {
-                    adapter.updateGrantedCount(it.data)
+                val count = it.data ?: 0
+                if (grantedCountChanged(count)) {
+                    adapter.updateGrantedCount(count)
                 }
             }
         }
