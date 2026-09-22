@@ -11,19 +11,19 @@ import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.databinding.HomeItemContainerBinding
 import moe.shizuku.manager.databinding.HomeStartButtonBinding
+import moe.shizuku.manager.model.ServiceStatus
 import moe.shizuku.manager.starter.StarterService
 import moe.shizuku.manager.starter.StarterState
 import moe.shizuku.manager.utils.EnvironmentUtils
 import rikka.core.content.asActivity
 import rikka.recyclerview.BaseViewHolder
 import rikka.recyclerview.BaseViewHolder.Creator
-import rikka.shizuku.Shizuku
 
 class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: View) :
-    BaseViewHolder<Any?>(root) {
+    BaseViewHolder<ServiceStatus>(root) {
 
     companion object {
-        val CREATOR = Creator<Any> { inflater: LayoutInflater, parent: ViewGroup? ->
+        val CREATOR = Creator<ServiceStatus> { inflater: LayoutInflater, parent: ViewGroup? ->
             val outer = HomeItemContainerBinding.inflate(inflater, parent, false)
             val inner = HomeStartButtonBinding.inflate(inflater, outer.root, true)
             StartButtonViewHolder(inner, outer.root)
@@ -84,7 +84,7 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
         stateObserver = Observer { updateButtonState() }
         StarterState.isStarting.observeForever(stateObserver!!)
 
-        val running = Shizuku.pingBinder()
+        val running = data.isRunning
         if (!running) {
             val methodName = when (ShizukuSettings.getPreferredStartMethod()) {
                 ShizukuSettings.START_METHOD_ROOT -> context.getString(R.string.start_method_root)
@@ -99,16 +99,9 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
     }
 
     private fun updateButtonState() {
-        val running = Shizuku.pingBinder()
+        val running = data.isRunning
+        val activeIsRoot = running && data.uid == 0
         val starting = StarterState.isStarting.value == true
-
-        val activeIsRoot = if (running) {
-            try {
-                Shizuku.getUid() == 0
-            } catch (e: Throwable) {
-                false
-            }
-        } else false
 
         val configuredIsRoot = ShizukuSettings.getPreferredStartMethod() == ShizukuSettings.START_METHOD_ROOT
         val configuredIsAdbOrWireless = !configuredIsRoot

@@ -48,8 +48,8 @@ class HomeAdapter(private val homeModel: HomeViewModel, private val appsModel: A
         }
 
         if (isPrimaryUser) {
-            addItem(StartButtonViewHolder.CREATOR, null, ID_START_BUTTON)
-            addItem(StartRootViewHolder.CREATOR, null, ID_START_ROOT)
+            addItem(StartButtonViewHolder.CREATOR, status, ID_START_BUTTON)
+            addItem(StartRootViewHolder.CREATOR, status, ID_START_ROOT)
         }
 
         notifyDataSetChanged()

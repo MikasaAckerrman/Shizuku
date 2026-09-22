@@ -25,6 +25,16 @@ private const val kExportedKeySize = 64
 
 private const val kPairingPacketHeaderSize = 6
 
+private object AdbNativeLoader {
+    init {
+        if (Build.VERSION.SDK_INT >= 30) {
+            System.loadLibrary("adb")
+        }
+    }
+
+    fun ensureLoaded() {}
+}
+
 private class PeerInfo(
         val type: Byte,
         data: ByteArray) {
@@ -152,6 +162,7 @@ private class PairingContext private constructor(private val nativePtr: Long) {
     companion object {
 
         fun create(password: ByteArray): PairingContext? {
+            AdbNativeLoader.ensureLoaded()
             val nativePtr = nativeConstructor(true, password)
             return if (nativePtr != 0L) PairingContext(nativePtr) else null
         }

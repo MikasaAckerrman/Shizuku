@@ -8,7 +8,7 @@
     android:orientation="horizontal">
 
     <com.google.android.material.button.MaterialButton
-        android:id="@+id/button"
+        android:id="@+id/rootStart"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:minHeight="48dp"
