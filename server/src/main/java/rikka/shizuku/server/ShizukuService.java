@@ -38,6 +38,7 @@ import androidx.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CountDownLatch;
 
 import kotlin.collections.ArraysKt;
 import moe.shizuku.api.BinderContainer;
@@ -78,6 +79,22 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
         }
     }
 
+    private static void waitAllSystemServices() {
+        final String[] services = {"package", Context.ACTIVITY_SERVICE, Context.USER_SERVICE, Context.APP_OPS_SERVICE};
+        final CountDownLatch latch = new CountDownLatch(services.length);
+        for (final String service : services) {
+            new Thread(() -> {
+                waitSystemService(service);
+                latch.countDown();
+            }, "ShizukuService-Wait-" + service).start();
+        }
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            LOGGER.w(e.getMessage(), e);
+        }
+    }
+
     public static ApplicationInfo getManagerApplicationInfo() {
         return PackageManagerApis.getApplicationInfoNoThrow(MANAGER_APPLICATION_ID, 0, 0);
     }
@@ -96,10 +113,7 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
 
         LOGGER.i("starting server...");
 
-        waitSystemService("package");
-        waitSystemService(Context.ACTIVITY_SERVICE);
-        waitSystemService(Context.USER_SERVICE);
-        waitSystemService(Context.APP_OPS_SERVICE);
+        waitAllSystemServices();
 
         ApplicationInfo ai = getManagerApplicationInfo();
         if (ai == null) {
@@ -112,6 +126,9 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
         configManager = getConfigManager();
         clientManager = getClientManager();
 
+        BinderSender.register(this);
+        signalReady();
+
         ApkChangedObservers.start(ai.sourceDir, () -> {
             if (getManagerApplicationInfo() == null) {
                 LOGGER.w("manager app is uninstalled in user 0, exiting...");
@@ -119,15 +136,15 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
             }
         });
 
-        BinderSender.register(this);
+        mainHandler.post(() -> {
+            sendBinderToClient();
+            sendBinderToManager();
+        });
+    }
 
-        // [fix-19] Signal readiness as early as possible. The starter process
-        // waits for this signal. We use a tmpfs file because
-        // SystemProperties.set() may be denied under the server's SELinux
-        // context (e.g. when started via ADB as shell).
+    private static void signalReady() {
         try {
             int myPid = android.os.Process.myPid();
-            // Clean up any stale error log from previous debugging.
             try {
                 new java.io.File("/data/local/tmp/.shizuku_ready.err").delete();
             } catch (Throwable ignored) {
@@ -139,11 +156,6 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
             readinessFile.setReadable(true, false);
         } catch (Throwable ignored) {
         }
-
-        mainHandler.post(() -> {
-            sendBinderToClient();
-            sendBinderToManager();
-        });
     }
 
     @Override
