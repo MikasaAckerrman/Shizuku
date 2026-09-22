@@ -65,6 +65,9 @@ class ApplicationManagementActivity : AppBarActivity() {
                     tr.printStackTrace()
                     Toast.makeText(this, tr.toString(), Toast.LENGTH_SHORT).show()
                 }
+                Status.LOADING -> {
+                    // No-op
+                }
             }
         }
         viewModel.load()
