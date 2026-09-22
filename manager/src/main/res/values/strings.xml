@@ -58,11 +58,6 @@
     <string name="adb_pairing_tutorial_content_network_limation_not_foreground">Some systems (such as MIUI) disallow apps to access the network when they are not visible, even if the app uses foreground service as standard. Please disable battery optimization features for Shizuku on such systems.</string>
 
     <!-- Home - Root -->
-    <string name="home_root_title"><![CDATA[Start (for rooted devices)]]></string>
-    <string name="home_root_description"><![CDATA[In addition, Shizuku can be started automatically on boot. If not, please check if your system or third-party tools have restricted Shizuku.<br>You can refer to %s.]]></string>
-    <string name="home_root_description_sui"><![CDATA[If you are using Magisk, you can try %1$s. For root users, it will eventually replace Shizuku. Note, existing applications needs to change a little to use %2$s.]]></string>
-    <string name="home_root_button_start">Start</string>
-    <string name="home_root_button_restart">Restart</string>
 
     <!-- Home - Application management -->
     <string name="home_app_management_title">Application management</string>
@@ -74,8 +69,6 @@
     <string name="home_app_management_empty">Apps that has requested or declared Shizuku will show here.</string>
 
     <!-- Home - Learn more -->
-    <string name="home_start_root_title">Start with root</string>
-    <string name="home_start_root_description">Start Shizuku using root access</string>
     <string name="home_start_root_button">Start root</string>
     <string name="settings_learn_more">Learn more about Shizuku</string>
     <string name="settings_learn_more_summary">Open the project repository</string>

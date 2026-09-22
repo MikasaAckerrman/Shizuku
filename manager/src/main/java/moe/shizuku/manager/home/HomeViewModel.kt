@@ -1,5 +1,6 @@
 package moe.shizuku.manager.home
 
+import android.os.Trace
 import android.content.pm.PackageManager
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -24,7 +25,9 @@ class HomeViewModel : ViewModel() {
     val serviceStatus = _serviceStatus as LiveData<Resource<ServiceStatus>>
 
     private suspend fun load(): ServiceStatus = withContext(Dispatchers.IO) {
-        if (!Shizuku.pingBinder()) {
+        Trace.beginSection("HomeViewModel.load")
+        try {
+            if (!Shizuku.pingBinder()) {
             return@withContext ServiceStatus()
         }
 
@@ -56,7 +59,9 @@ class HomeViewModel : ViewModel() {
         // Run a random remote transaction here, report no permission as not running
         ShizukuSystemApis.checkPermission(Manifest.permission.API_V23, BuildConfig.APPLICATION_ID, 0)
 
-        ServiceStatus(u, v, p, seContext, perm)
+        ServiceStatus(u, v, p, seContext, perm).also {
+            Trace.endSection()
+        }
     }
 
     fun reload() {

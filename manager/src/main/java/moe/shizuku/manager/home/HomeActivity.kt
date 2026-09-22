@@ -4,6 +4,7 @@ import android.content.DialogInterface
 import android.content.Intent
 import android.os.Bundle
 import android.os.Process
+import android.os.Trace
 import android.text.method.LinkMovementMethod
 import android.util.TypedValue
 import android.view.LayoutInflater
@@ -51,6 +52,7 @@ abstract class HomeActivity : AppBarActivity() {
     private var lastGrantedCount: Int = -1
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        Trace.beginSection("HomeActivity.onCreate")
         super.onCreate(savedInstanceState)
 
         val binding = HomeActivityBinding.inflate(layoutInflater)
@@ -82,6 +84,7 @@ abstract class HomeActivity : AppBarActivity() {
 
         Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
         Shizuku.addBinderDeadListener(binderDeadListener)
+        Trace.endSection()
     }
 
     private fun statusChanged(status: ServiceStatus?): Boolean {

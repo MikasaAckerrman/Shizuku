@@ -3,6 +3,7 @@ package moe.shizuku.manager
 import android.app.Application
 import android.content.Context
 import android.os.Build
+import android.os.Trace
 import androidx.appcompat.app.AppCompatDelegate
 import com.topjohnwu.superuser.Shell
 import moe.shizuku.manager.ktx.logd
@@ -32,10 +33,12 @@ class ShizukuApplication : Application() {
     }
 
     override fun onCreate() {
+        Trace.beginSection("ShizukuApplication.onCreate")
         super.onCreate()
         application = this
         init(this)
         moe.shizuku.manager.adb.AdbKey.appContext = this
+        Trace.endSection()
     }
 
 }
