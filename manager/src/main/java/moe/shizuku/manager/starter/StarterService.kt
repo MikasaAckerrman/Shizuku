@@ -10,7 +10,7 @@ import android.os.IBinder
 import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationCompat as NotifCompat
 import com.topjohnwu.superuser.CallbackList
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.CoroutineScope
@@ -80,7 +80,7 @@ class StarterService : Service() {
     }
 
     private fun buildNotification(text: String, ongoing: Boolean): android.app.Notification {
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        return NotifCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_system_icon)
             .setContentTitle("Shizuku")
             .setContentText(text)
