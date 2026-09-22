@@ -31,7 +31,7 @@ abstract class HomeActivity : AppBarActivity() {
 
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
         checkServerStatus()
-        appsModel.load()
+        appsModel.load(onlyCount = true)
     }
 
     private val binderDeadListener = Shizuku.OnBinderDeadListener {
@@ -71,9 +71,15 @@ abstract class HomeActivity : AppBarActivity() {
         Shizuku.addBinderDeadListener(binderDeadListener)
     }
 
+    private var lastResume = 0L
+
     override fun onResume() {
         super.onResume()
-        checkServerStatus()
+        val now = System.currentTimeMillis()
+        if (now - lastResume > 500) {
+            lastResume = now
+            checkServerStatus()
+        }
     }
 
     private fun checkServerStatus() {

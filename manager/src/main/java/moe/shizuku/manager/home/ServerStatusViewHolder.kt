@@ -9,8 +9,6 @@ import moe.shizuku.manager.R
 import moe.shizuku.manager.databinding.HomeItemContainerBinding
 import moe.shizuku.manager.databinding.HomeServerStatusBinding
 import moe.shizuku.manager.model.ServiceStatus
-import rikka.html.text.HtmlCompat
-import rikka.html.text.toHtml
 import rikka.recyclerview.BaseViewHolder
 import rikka.recyclerview.BaseViewHolder.Creator
 import rikka.shizuku.Shizuku
@@ -32,18 +30,21 @@ class ServerStatusViewHolder(private val binding: HomeServerStatusBinding, root:
     private inline val summaryView get() = binding.text2
     private inline val iconView get() = binding.icon
 
+    private var iconOk: android.graphics.drawable.Drawable? = null
+    private var iconError: android.graphics.drawable.Drawable? = null
+
     override fun onBind() {
         val context = itemView.context
+        if (iconOk == null) iconOk = ContextCompat.getDrawable(context, R.drawable.ic_server_ok_24dp)
+        if (iconError == null) iconError = ContextCompat.getDrawable(context, R.drawable.ic_server_error_24dp)
+
         val status = data
         val ok = status.isRunning
         val isRoot = status.uid == 0
         val apiVersion = status.apiVersion
         val patchVersion = status.patchVersion
-        if (ok) {
-            iconView.setImageDrawable(ContextCompat.getDrawable(context, R.drawable.ic_server_ok_24dp))
-        } else {
-            iconView.setImageDrawable(ContextCompat.getDrawable(context, R.drawable.ic_server_error_24dp))
-        }
+
+        iconView.setImageDrawable(if (ok) iconOk else iconError)
         val user = if (isRoot) "root" else "adb"
         val title = if (ok) {
             context.getString(R.string.home_status_service_is_running, context.getString(R.string.app_name))
@@ -63,8 +64,8 @@ class ServerStatusViewHolder(private val binding: HomeServerStatusBinding, root:
         } else {
             ""
         }
-        textView.text = title.toHtml(HtmlCompat.FROM_HTML_OPTION_TRIM_WHITESPACE)
-        summaryView.text = summary.toHtml(HtmlCompat.FROM_HTML_OPTION_TRIM_WHITESPACE)
+        textView.text = title
+        summaryView.text = summary
         if (TextUtils.isEmpty(summaryView.text)) {
             summaryView.visibility = View.GONE
         } else {

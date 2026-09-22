@@ -34,13 +34,13 @@ class AppsViewModel(context: Context) : ViewModel() {
     fun load(onlyCount: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val list: MutableList<PackageInfo> = ArrayList()
                 var count = 0
+                val list = if (onlyCount) null else ArrayList<PackageInfo>()
                 for (pi in AuthorizationManager.getPackages()) {
-                    list.add(pi)
+                    if (!onlyCount) list!!.add(pi)
                     if (AuthorizationManager.granted(pi.packageName, pi.applicationInfo!!.uid)) count++
                 }
-                if (!onlyCount) _packages.postValue(Resource.success(list))
+                if (!onlyCount) _packages.postValue(Resource.success(list!!))
                 _grantedCount.postValue(Resource.success(count))
             } catch (e: CancellationException) {
 

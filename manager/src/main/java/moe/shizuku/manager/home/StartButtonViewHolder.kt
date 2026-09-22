@@ -78,10 +78,11 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
     }
 
     override fun onBind() {
-        updateButtonState()
+        val running = Shizuku.pingBinder()
+        updateButtonState(running)
 
         stateObserver?.let { StarterState.isStarting.removeObserver(it) }
-        stateObserver = Observer { updateButtonState() }
+        stateObserver = Observer { updateButtonState(running) }
         StarterState.isStarting.observeForever(stateObserver!!)
 
         val running = Shizuku.pingBinder()
@@ -117,8 +118,7 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
         binding.text2.isVisible = true
     }
 
-    private fun updateButtonState() {
-        val running = Shizuku.pingBinder()
+    private fun updateButtonState(running: Boolean = Shizuku.pingBinder()) {
         val starting = StarterState.isStarting.value == true
         binding.button1.isEnabled = !running && !starting
         binding.button1.alpha = if (binding.button1.isEnabled) 1.0f else 0.5f
