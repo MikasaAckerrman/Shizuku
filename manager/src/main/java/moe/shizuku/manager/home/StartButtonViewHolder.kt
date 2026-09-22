@@ -78,13 +78,13 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
     }
 
     override fun onBind() {
-        val running = Shizuku.pingBinder()
-        updateButtonState(running)
+        updateButtonState()
 
         stateObserver?.let { StarterState.isStarting.removeObserver(it) }
-        stateObserver = Observer { updateButtonState(running) }
+        stateObserver = Observer { updateButtonState() }
         StarterState.isStarting.observeForever(stateObserver!!)
 
+        val running = Shizuku.pingBinder()
         if (!running) {
             val methodName = when (ShizukuSettings.getPreferredStartMethod()) {
                 ShizukuSettings.START_METHOD_ROOT -> context.getString(R.string.start_method_root)
@@ -98,9 +98,28 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
         }
     }
 
-    private fun updateButtonState(running: Boolean = Shizuku.pingBinder()) {
+    private fun updateButtonState() {
+        val running = Shizuku.pingBinder()
         val starting = StarterState.isStarting.value == true
-        binding.button1.isEnabled = !running && !starting
+
+        val activeIsRoot = if (running) {
+            try {
+                Shizuku.getUid() == 0
+            } catch (e: Throwable) {
+                false
+            }
+        } else false
+
+        val configuredIsRoot = ShizukuSettings.getPreferredStartMethod() == ShizukuSettings.START_METHOD_ROOT
+        val configuredIsAdbOrWireless = !configuredIsRoot
+
+        // Enabled if not running, or if the configured method is not the one currently active.
+        // This lets the user switch from ADB to root or vice versa without manual restart.
+        val configuredMethodActive = (configuredIsRoot && activeIsRoot) ||
+                (configuredIsAdbOrWireless && running && !activeIsRoot)
+        val enabled = !running || !configuredMethodActive
+
+        binding.button1.isEnabled = enabled && !starting
         binding.button1.alpha = if (binding.button1.isEnabled) 1.0f else 0.5f
     }
 }

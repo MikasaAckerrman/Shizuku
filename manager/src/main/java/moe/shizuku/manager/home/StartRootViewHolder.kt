@@ -4,7 +4,6 @@ import android.content.Intent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import moe.shizuku.manager.R
 import moe.shizuku.manager.databinding.HomeItemContainerBinding
 import moe.shizuku.manager.databinding.HomeStartRootButtonBinding
 import moe.shizuku.manager.starter.StarterService
@@ -39,7 +38,19 @@ class StartRootViewHolder(private val binding: HomeStartRootButtonBinding, root:
     override fun onBind() {
         val running = Shizuku.pingBinder()
         val starting = StarterState.isStarting.value == true
-        binding.button.isEnabled = !running && !starting
+
+        val activeIsRoot = if (running) {
+            try {
+                Shizuku.getUid() == 0
+            } catch (e: Throwable) {
+                false
+            }
+        } else false
+
+        // Root button is enabled when not running, or when Shizuku is currently running via
+        // a non-root method (allows switching to root).
+        val enabled = !running || !activeIsRoot
+        binding.button.isEnabled = enabled && !starting
         binding.button.alpha = if (binding.button.isEnabled) 1.0f else 0.5f
     }
 }
