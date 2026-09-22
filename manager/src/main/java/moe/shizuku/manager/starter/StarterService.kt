@@ -57,6 +57,18 @@ class StarterService : Service() {
         val host = intent.getStringExtra(EXTRA_HOST)
         val port = intent.getIntExtra(EXTRA_PORT, 0)
 
+        // If Shizuku is already running, stop it first so the user can switch
+        // between root and ADB without manually restarting.
+        if (runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
+            try {
+                Shizuku.exit()
+                // Give the server a moment to die before starting a new one.
+                Thread.sleep(500)
+            } catch (e: Throwable) {
+                e.printStackTrace()
+            }
+        }
+
         if (root) {
             startRoot()
         } else {
