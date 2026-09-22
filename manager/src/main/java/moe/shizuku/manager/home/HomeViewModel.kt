@@ -28,38 +28,39 @@ class HomeViewModel : ViewModel() {
         Trace.beginSection("HomeViewModel.load")
         try {
             if (!Shizuku.pingBinder()) {
-            return@withContext ServiceStatus()
-        }
-
-        // Run independent binder calls in parallel to reduce latency.
-        val uid = async { runCatching { Shizuku.getUid() }.getOrDefault(-1) }
-        val apiVersion = async { runCatching { Shizuku.getVersion() }.getOrDefault(-1) }
-        val patchVersion = async {
-            runCatching { Shizuku.getServerPatchVersion() }.getOrDefault(-1).let { if (it < 0) 0 else it }
-        }
-        val permissionTest = async {
-            Shizuku.checkRemotePermission("android.permission.GRANT_RUNTIME_PERMISSIONS") == PackageManager.PERMISSION_GRANTED
-        }
-
-        val u = uid.await()
-        val v = apiVersion.await()
-        val p = patchVersion.await()
-        val perm = permissionTest.await()
-
-        val seContext = if (v >= 6) {
-            try {
-                Shizuku.getSELinuxContext()
-            } catch (tr: Throwable) {
-                LOGGER.w(tr, "getSELinuxContext")
-                null
+                return@withContext ServiceStatus()
             }
-        } else null
 
-        // Before a526d6bb, server will not exit on uninstall, manager installed later will get not permission
-        // Run a random remote transaction here, report no permission as not running
-        ShizukuSystemApis.checkPermission(Manifest.permission.API_V23, BuildConfig.APPLICATION_ID, 0)
+            // Run independent binder calls in parallel to reduce latency.
+            val uid = async { runCatching { Shizuku.getUid() }.getOrDefault(-1) }
+            val apiVersion = async { runCatching { Shizuku.getVersion() }.getOrDefault(-1) }
+            val patchVersion = async {
+                runCatching { Shizuku.getServerPatchVersion() }.getOrDefault(-1).let { if (it < 0) 0 else it }
+            }
+            val permissionTest = async {
+                Shizuku.checkRemotePermission("android.permission.GRANT_RUNTIME_PERMISSIONS") == PackageManager.PERMISSION_GRANTED
+            }
 
-        ServiceStatus(u, v, p, seContext, perm).also {
+            val u = uid.await()
+            val v = apiVersion.await()
+            val p = patchVersion.await()
+            val perm = permissionTest.await()
+
+            val seContext = if (v >= 6) {
+                try {
+                    Shizuku.getSELinuxContext()
+                } catch (tr: Throwable) {
+                    LOGGER.w(tr, "getSELinuxContext")
+                    null
+                }
+            } else null
+
+            // Before a526d6bb, server will not exit on uninstall, manager installed later will get not permission
+            // Run a random remote transaction here, report no permission as not running
+            ShizukuSystemApis.checkPermission(Manifest.permission.API_V23, BuildConfig.APPLICATION_ID, 0)
+
+            ServiceStatus(u, v, p, seContext, perm)
+        } finally {
             Trace.endSection()
         }
     }
