@@ -2,6 +2,7 @@ package moe.shizuku.manager.starter
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -54,25 +55,20 @@ class StarterService : Service() {
         StarterState.setStarting(true)
 
         val root = intent.getBooleanExtra(EXTRA_IS_ROOT, true)
-        val host = intent.getStringExtra(EXTRA_HOST)
+        val host = intent.getStringExtra(EXTRA_HOST) ?: "127.0.0.1"
         val port = intent.getIntExtra(EXTRA_PORT, 0)
 
-        // If Shizuku is already running, stop it first so the user can switch
-        // between root and ADB without manually restarting.
-        if (runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
-            try {
-                Shizuku.exit()
-                // Give the server a moment to die before starting a new one.
-                Thread.sleep(500)
-            } catch (e: Throwable) {
-                e.printStackTrace()
-            }
-        }
-
+        // [fix] Do NOT stop the server here. Shizuku.exit() is a
+        // synchronous binder call and Thread.sleep() would block the MAIN
+        // thread (jank/ANR risk). Worse, it raced with the start paths:
+        // if the server was slow to die, the "already running" fast path
+        // in startRoot()/startAdb() could report success WITHOUT starting
+        // anything, leaving Shizuku dead. Stopping (for a mode switch) now
+        // happens inside the coroutines, off the main thread.
         if (root) {
             startRoot()
         } else {
-            startAdb(host!!, port)
+            startAdb(host, port)
         }
 
         return START_NOT_STICKY
@@ -94,14 +90,30 @@ class StarterService : Service() {
     }
 
     private fun buildNotification(text: String, ongoing: Boolean): android.app.Notification {
-        return NotifCompat.Builder(this, CHANNEL_ID)
+        val builder = NotifCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_system_icon)
             .setContentTitle("Shizuku")
             .setContentText(text)
             .setOngoing(ongoing)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setSilent(true)
-            .build()
+        if (!ongoing && text.contains("failed")) {
+            // [fix] "tap for details" now really opens the details: the
+            // error notification carries the same intent the service
+            // launches directly. Flag_IMMUTABLE is required on API 31+.
+            val intent = Intent(this, StarterActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                putExtra(StarterActivity.EXTRA_IS_ROOT, false)
+                putExtra(StarterActivity.EXTRA_SILENT, false)
+                putExtra(StarterActivity.EXTRA_OUTPUT, sb.toString())
+            }
+            val pi = PendingIntent.getActivity(
+                this, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.setContentIntent(pi)
+        }
+        return builder.build()
     }
 
     private fun updateNotification(text: String, ongoing: Boolean = false) {
@@ -137,21 +149,26 @@ class StarterService : Service() {
         sb.append("Starting with root...").append('\n').append('\n')
 
         scope.launch {
-            if (runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
-                sb.append("Service is already running, nothing to do.\n")
-                finishSuccess(false)
-                return@launch
-            }
+            // [fix] Any unexpected failure must reach finishError():
+            // otherwise StarterState stays "starting" forever and both
+            // start buttons remain disabled until the app restarts.
+            try {
+                // [fix] If a REACHABLE server is running, stop it first:
+                // the user pressed "Start with root" to switch modes (or
+                // to force a restart). An UNREACHABLE server (a zombie
+                // that survived a soft reboot) is left alone here — the
+                // native starter kills it by name.
+                stopExistingServerIfRunning()
 
-            if (!Shell.getShell().isRoot) {
-                Shell.getCachedShell()?.close()
-                sb.append("Can't open root shell, try again...\n")
                 if (!Shell.getShell().isRoot) {
-                    sb.append("Still not :(\n")
-                    finishError(RuntimeException("Root start failed"))
-                    return@launch
+                    Shell.getCachedShell()?.close()
+                    sb.append("Can't open root shell, try again...\n")
+                    if (!Shell.getShell().isRoot) {
+                        sb.append("Still not :(\n")
+                        finishError(RuntimeException("Root start failed"))
+                        return@launch
+                    }
                 }
-            }
 
             Shell.cmd(Starter.internalCommand).to(object : CallbackList<String?>() {
                 override fun onAddElement(s: String?) {
@@ -170,6 +187,10 @@ class StarterService : Service() {
                     }
                 }
             }
+            } catch (t: Throwable) {
+                // [fix] unexpected failure — must release StarterState.
+                finishError(t)
+            }
         }
     }
 
@@ -178,13 +199,20 @@ class StarterService : Service() {
         sb.append("Starting with $mode in port $port...").append('\n').append('\n')
 
         scope.launch {
-            if (runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
-                sb.append("Service is already running, nothing to do.\n")
-                finishSuccess(false)
-                return@launch
-            }
+            // [fix] Any unexpected failure must reach finishError():
+            // otherwise StarterState stays "starting" forever and both
+            // start buttons remain disabled until the app restarts.
+            try {
+                // [fix] If a REACHABLE server is running, stop it first
+                // (the user pressed Start to switch modes or to force a
+                // restart). An UNREACHABLE server — a zombie that survived
+                // a soft reboot — is handled by the native starter, which
+                // kills it by name; a ROOT-owned zombie (which the shell
+                // starter cannot SIGKILL) gets the root-shell fallback
+                // below.
+                stopExistingServerIfRunning()
 
-            val key = try {
+                val key = try {
                 AdbKey(PreferenceAdbKeyStore(ShizukuSettings.getPreferences()), "shizuku")
             } catch (e: Throwable) {
                 e.printStackTrace()
@@ -219,6 +247,23 @@ class StarterService : Service() {
                     lastError = e
                     e.printStackTrace()
                 }
+
+                // [fix] A server started as ROOT cannot be killed by the
+                // ADB (shell) starter — SIGKILL fails with EPERM and every
+                // retry would hit the same wall. If a root shell is
+                // available, stop the zombie ourselves and retry the ADB
+                // start; otherwise tell the user to use "Start with root".
+                if (!success && sb.indexOf(ROOT_ZOMBIE_MARKER) >= 0) {
+                    sb.append('\n')
+                        .append("[the running server was started as root, stopping it via root...]\n")
+                    if (killServerViaRoot()) {
+                        sb.append("[stopped, retrying]\n")
+                        continue
+                    } else {
+                        sb.append("[no root access: use \"Start with root\" to restart the server]\n")
+                        break
+                    }
+                }
             }
 
             if (success) {
@@ -227,6 +272,10 @@ class StarterService : Service() {
                 sb.append('\n').append(Log.getStackTraceString(lastError))
                 sb.append("\nServer did not confirm it is running.\n")
                 finishError(lastError ?: RuntimeException("ADB connection failed after 3 attempts"))
+            }
+            } catch (t: Throwable) {
+                // [fix] unexpected failure — must release StarterState.
+                finishError(t)
             }
         }
     }
@@ -262,6 +311,60 @@ class StarterService : Service() {
         return output.contains(marker)
     }
 
+    /**
+     * Stop the running server if it is currently REACHABLE (binder alive).
+     *
+     * This covers the mode-switch case: the user pressed Start while a
+     * working server of another mode is running. A server we cannot reach
+     * (a zombie after a soft reboot — its binder delivery is dead even
+     * though the process survives) is NOT handled here: the native starter
+     * kills it by name, or the root-shell fallback does.
+     */
+    private fun stopExistingServerIfRunning(): Boolean {
+        if (!runCatching { Shizuku.pingBinder() }.getOrDefault(false)) return false
+        sb.append("Service is already running, stopping it first...\n")
+        try {
+            Shizuku.exit()
+        } catch (e: Throwable) {
+            // The server may have died between the ping and the exit.
+            e.printStackTrace()
+        }
+        // Wait (bounded) for the server to actually go down so the new
+        // start is clean; the server exits asynchronously.
+        val deadline = System.currentTimeMillis() + STOP_TIMEOUT_MS
+        while (System.currentTimeMillis() < deadline) {
+            if (!runCatching { Shizuku.pingBinder() }.getOrDefault(false)) return true
+            try {
+                Thread.sleep(STOP_POLL_MS)
+            } catch (ignored: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return true
+            }
+        }
+        return true
+    }
+
+    /**
+     * Kill a running shizuku_server through a ROOT shell. Used when the
+     * server was started as root and the ADB (shell) starter cannot
+     * SIGKILL it (EPERM). Returns false when root is not available.
+     */
+    private fun killServerViaRoot(): Boolean {
+        return try {
+            if (!Shell.getShell().isRoot) return false
+            val pid = Shell.cmd("pidof -s shizuku_server").exec()
+                .out.firstOrNull()?.trim().orEmpty()
+            if (pid.isEmpty()) {
+                true // already gone
+            } else {
+                Shell.cmd("kill -9 $pid").exec().isSuccess
+            }
+        } catch (e: Throwable) {
+            e.printStackTrace()
+            false
+        }
+    }
+
     companion object {
         private const val CHANNEL_ID = "shizuku_starter"
         private const val NOTIFICATION_ID = 1
@@ -272,6 +375,15 @@ class StarterService : Service() {
         // delivery lag (usually well under 5s).
         private const val VERIFY_TIMEOUT_MS = 8000L
         private const val VERIFY_POLL_MS = 250L
+
+        // Marker printed by the native starter when SIGKILL fails with
+        // EPERM — the running server was started as a different (root)
+        // user, and a shell-uid starter cannot kill it.
+        private const val ROOT_ZOMBIE_MARKER = "fatal: can't kill"
+
+        // How long to wait for the server to die after Shizuku.exit().
+        private const val STOP_TIMEOUT_MS = 2000L
+        private const val STOP_POLL_MS = 100L
 
         const val EXTRA_IS_ROOT = "moe.shizuku.manager.starter.EXTRA_IS_ROOT"
         const val EXTRA_HOST = "moe.shizuku.manager.starter.EXTRA_HOST"

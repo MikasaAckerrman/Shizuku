@@ -86,6 +86,12 @@ static bool wait_for_binder_ready(int pid, int timeout_ms, const char *ready_fil
             return true;
         }
 
+        // [fix] Count elapsed time on EVERY iteration: the inotify branch
+        // `continue`s after consuming events, which previously skipped the
+        // increment — a directory with constant writes could spin this
+        // loop indefinitely past the timeout.
+        elapsed_ms += poll_ms;
+
         if (use_inotify) {
             struct pollfd pfd = { inotify_fd, POLLIN, 0 };
             int ret = poll(&pfd, 1, poll_ms);
@@ -99,7 +105,6 @@ static bool wait_for_binder_ready(int pid, int timeout_ms, const char *ready_fil
         } else {
             usleep(poll_ms * 1000);
         }
-        elapsed_ms += poll_ms;
     }
 
     if (use_inotify) {
@@ -317,40 +322,24 @@ int main(int argc, char *argv[]) {
     LOGPF("info: starter begin\n");
     fflush(stdout);
 
-    // [fix-12] Idempotent start: if a healthy server is already running,
-    // DON'T kill it. Previously EVERY starter invocation SIGKILLed all
-    // shizuku_server processes before forking a new one — any second
-    // session, receiver re-delivery, or accidental re-run would destroy
-    // a working server and disconnect all active clients.
+    // [fix-12-revert] ALWAYS kill and restart.
     //
-    // Health signal: the server writes its pid to
-    // /data/local/tmp/.shizuku_ready as soon as its binder is registered.
-    // If that file exists, the pid is alive, and the process is actually
-    // shizuku_server, treat the server as healthy.
-    {
-        int server_pid = 0;
-        FILE *fp = fopen("/data/local/tmp/.shizuku_ready", "r");
-        if (fp != nullptr) {
-            if (fscanf(fp, "%d", &server_pid) != 1) server_pid = 0;
-            fclose(fp);
-        }
-        if (server_pid <= 0) {
-            char pid_str[32] = {0};
-            __system_property_get("shizuku.server.pid", pid_str);
-            if (pid_str[0] != '\0') server_pid = atoi(pid_str);
-        }
-        if (server_pid > 0 && server_pid != getpid()) {
-            char name[1024];
-            if (get_proc_name(server_pid, name, 1024) == 0 &&
-                strcmp(SERVER_NAME, name) == 0) {
-                LOGPF("info: healthy server already running (pid %d), skipping start\n", server_pid);
-                fflush(stdout);
-                exit(EXIT_SUCCESS);
-            }
-        }
-    }
-
-    // kill old server (only reached when no healthy server is registered)
+    // The previous "healthy skip" (ready file + live pid + process name =>
+    // skip) was WRONG: a server process can be alive yet functionally dead.
+    // After a soft reboot the setsid'd shizuku_server SURVIVES, but
+    // system_server was restarted, so:
+    //   - BinderSender's process/uid observers are gone (they were
+    //     registered with the old, now-dead system_server);
+    //   - the server's ActivityThread/AMS binder proxies are stale, so
+    //     getContentProviderExternal can no longer reach any app.
+    // The server becomes a zombie that can never deliver its binder again.
+    // The skip made the starter exit(0) with "healthy server already
+    // running", so the app could never recover until the zombie was killed
+    // manually.
+    //
+    // Idempotency is already handled at the manager level: StarterService
+    // checks pingBinder() before invoking the starter, and the start
+    // buttons are disabled while a reachable server is running.
     LOGPF("info: killing old process...\n");
     fflush(stdout);
 
@@ -366,7 +355,7 @@ int main(int argc, char *argv[]) {
         if (kill(pid, SIGKILL) == 0)
             LOGPF("info: killed %d (%s)\n", pid, name);
         else if (errno == EPERM) {
-            perrorf("fatal: can't kill %d, please try to stop existing Shizuku from app first.\n", pid);
+            perrorf("fatal: can't kill %d (it was started from a different user, likely root; use \"Start with root\" to restart it)\n", pid);
             exit(EXIT_FATAL_KILL);
         } else {
             LOGPF("warn: failed to kill %d (%s)\n", pid, name);
