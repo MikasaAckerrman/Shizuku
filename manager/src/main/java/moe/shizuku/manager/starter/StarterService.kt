@@ -158,11 +158,16 @@ class StarterService : Service() {
                     sb.append(s).append('\n')
                 }
             }).submit {
-                if (it.code == 0) {
-                    finishSuccess()
-                } else {
-                    sb.append("Send this to developer may help solve the problem.\n")
-                    finishError(RuntimeException("Root start failed"))
+                val shellCode = it.code
+                // [fix] submit() callbacks run on the main thread; the
+                // verification polls with sleeps, so run it on IO.
+                scope.launch(Dispatchers.IO) {
+                    if (shellCode == 0 && verifyServerStarted(sb)) {
+                        finishSuccess()
+                    } else {
+                        sb.append("Send this to developer may help solve the problem.\n")
+                        finishError(RuntimeException("Root start failed"))
+                    }
                 }
             }
         }
@@ -202,8 +207,14 @@ class StarterService : Service() {
                             sb.append(String(it))
                         }
                     }
-                    success = true
-                    break
+                    // [fix] The ADB session completing does NOT guarantee the
+                    // server is alive. Verify before reporting success, but
+                    // tolerate the case where the binder has not been
+                    // delivered to us yet (server may finish publishing right
+                    // after the shell command returns, or the delivery retry
+                    // may still be pending after a soft reboot).
+                    success = verifyServerStarted(sb)
+                    if (success) break
                 } catch (e: Throwable) {
                     lastError = e
                     e.printStackTrace()
@@ -214,14 +225,53 @@ class StarterService : Service() {
                 finishSuccess()
             } else {
                 sb.append('\n').append(Log.getStackTraceString(lastError))
+                sb.append("\nServer did not confirm it is running.\n")
                 finishError(lastError ?: RuntimeException("ADB connection failed after 3 attempts"))
             }
         }
     }
 
+    /**
+     * Verify the server is really running after a start attempt.
+     *
+     * Success is confirmed by EITHER:
+     * - the native starter reporting "exit with 0" (the ready file appeared
+     *   and the server published its binder), OR
+     * - the binder being reachable from this app (pingBinder).
+     *
+     * We do NOT fail fast: the shell command may return before the starter
+     * finishes waiting for the ready file, and binder delivery to this app
+     * may lag (server delivers via content provider, with retries). Poll
+     * briefly before concluding failure.
+     */
+    private fun verifyServerStarted(output: StringBuilder): Boolean {
+        // Fast path: binder already alive.
+        if (runCatching { Shizuku.pingBinder() }.getOrDefault(false)) return true
+
+        // Fast path: starter already reported success in its output.
+        val marker = "info: shizuku_starter exit with 0"
+        if (output.contains(marker)) return true
+
+        // Poll: server may still be publishing / delivering binder.
+        val deadline = System.currentTimeMillis() + VERIFY_TIMEOUT_MS
+        while (System.currentTimeMillis() < deadline) {
+            Thread.sleep(VERIFY_POLL_MS)
+            if (runCatching { Shizuku.pingBinder() }.getOrDefault(false)) return true
+        }
+        // Final verdict from the marker (output may have arrived late).
+        return output.contains(marker)
+    }
+
     companion object {
         private const val CHANNEL_ID = "shizuku_starter"
         private const val NOTIFICATION_ID = 1
+
+        // [fix] How long to poll for binder/marker before declaring a
+        // failed start. The native starter itself waits up to 15s for the
+        // ready file, so the poll window here only needs to cover binder
+        // delivery lag (usually well under 5s).
+        private const val VERIFY_TIMEOUT_MS = 8000L
+        private const val VERIFY_POLL_MS = 250L
 
         const val EXTRA_IS_ROOT = "moe.shizuku.manager.starter.EXTRA_IS_ROOT"
         const val EXTRA_HOST = "moe.shizuku.manager.starter.EXTRA_HOST"

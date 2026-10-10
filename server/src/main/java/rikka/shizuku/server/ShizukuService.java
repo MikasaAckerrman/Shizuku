@@ -110,6 +110,7 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
         super();
 
         HandlerUtil.setMainHandler(mainHandler);
+        sInstance = this;
 
         LOGGER.i("starting server...");
 
@@ -204,6 +205,7 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
     public void exit() {
         enforceManagerPermission("exit");
         LOGGER.i("exit");
+        sInstance = null;
         System.exit(0);
     }
 
@@ -521,6 +523,54 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
         }
     }
 
+    // [fix] Delayed retry for binder delivery when the target provider is
+    // null (app process not running). The app can be killed by the system
+    // (e.g. "single-cleaner" after soft reboot) and started later; when the
+    // process comes back, BinderSender's observers will also fire, but the
+    // observer path can itself see a null provider for the manager app, so
+    // an independent retry loop is kept here.
+    private static final long BINDER_DELIVERY_RETRY_DELAY_MS = 5000;
+    private static final int BINDER_DELIVERY_MAX_RETRIES = 6; // 30s total
+
+    private static final java.util.Map<String, Integer> sBinderDeliveryRetries = new java.util.HashMap<>();
+    // [fix] Set in onCreate path (constructor registers BinderSender with
+    // itself). Retry posts must go through this instance's handler.
+    private static volatile ShizukuService sInstance;
+
+    private static void scheduleBinderDeliveryRetry(Binder binder, String packageName, int userId, long delayMs) {
+        String key = packageName + ":" + userId;
+        int attempt;
+        synchronized (sBinderDeliveryRetries) {
+            attempt = sBinderDeliveryRetries.merge(key, 1, Integer::sum);
+        }
+        if (attempt > BINDER_DELIVERY_MAX_RETRIES) {
+            LOGGER.w("binder delivery to %s user %d still failing after %d retries, giving up (observers will retry when the app starts)",
+                    packageName, userId, BINDER_DELIVERY_MAX_RETRIES);
+            synchronized (sBinderDeliveryRetries) {
+                sBinderDeliveryRetries.remove(key);
+            }
+            return;
+        }
+        LOGGER.i("binder delivery to %s user %d not ready (provider null), retry %d/%d in %d ms",
+                packageName, userId, attempt, BINDER_DELIVERY_MAX_RETRIES, delayMs);
+        ShizukuService service = sInstance;
+        if (service != null) {
+            service.mainHandler.postDelayed(() -> {
+                // Retry only while this service instance is alive.
+                if (sInstance == null || sInstance != service) return;
+                sendBinderToMangerIfManager(binder, packageName, userId);
+            }, delayMs);
+        }
+    }
+
+    private static void sendBinderToMangerIfManager(Binder binder, String packageName, int userId) {
+        if (MANAGER_APPLICATION_ID.equals(packageName)) {
+            sendBinderToManger(binder, userId);
+        } else {
+            sendBinderToUserApp(binder, packageName, userId);
+        }
+    }
+
     void sendBinderToManager() {
         sendBinderToManger(this);
     }
@@ -567,11 +617,16 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
             provider = ActivityManagerApis.getContentProviderExternal(name, userId, token, name);
             if (provider == null) {
                 LOGGER.e("provider is null %s %d", name, userId);
+                // [fix] The provider can be null when the target app process
+                // is not running (e.g. killed by the system right after a soft
+                // reboot). The app may start later, so schedule a delayed
+                // retry instead of silently giving up. Keep this thread free:
+                // run the retry on the main handler.
+                scheduleBinderDeliveryRetry(binder, packageName, userId, BINDER_DELIVERY_RETRY_DELAY_MS);
                 return;
             }
             if (!provider.asBinder().pingBinder()) {
                 LOGGER.e("provider is dead %s %d", name, userId);
-
                 if (retry) {
                     // For unknown reason, sometimes this could happens
                     // Kill Shizuku app and try again could work
@@ -593,6 +648,11 @@ public class ShizukuService extends Service<ShizukuUserServiceManager, ShizukuCl
             Bundle reply = IContentProviderUtils.callCompat(provider, null, name, "sendBinder", null, extra);
             if (reply != null) {
                 LOGGER.i("send binder to user app %s in user %d", packageName, userId);
+                // [fix] Delivery succeeded: reset the retry counter so a
+                // future transient failure starts counting from scratch.
+                synchronized (sBinderDeliveryRetries) {
+                    sBinderDeliveryRetries.remove(packageName + ":" + userId);
+                }
             } else {
                 LOGGER.w("failed to send binder to user app %s in user %d", packageName, userId);
             }
