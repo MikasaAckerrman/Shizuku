@@ -5,6 +5,7 @@ import android.os.Build
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.annotation.RequiresApi
 import androidx.core.view.isVisible
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Observer
@@ -12,6 +13,7 @@ import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.databinding.HomeItemContainerBinding
 import moe.shizuku.manager.databinding.HomeStartButtonBinding
+import moe.shizuku.manager.adb.AdbPairingTutorialActivity
 import moe.shizuku.manager.model.ServiceStatus
 import moe.shizuku.manager.starter.StarterService
 import moe.shizuku.manager.starter.StarterState
@@ -35,6 +37,10 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
 
     init {
         binding.button1.setOnClickListener { v: View -> onStartClicked(v) }
+        // [B2] Canonical pairing entry (restored from 2e5e91d^): split-screen
+        // environments use the in-app pairing dialog, everything else uses the
+        // tutorial screen that starts the pairing notification.
+        binding.buttonPair.setOnClickListener { v: View -> onPairClicked(v.context) }
         binding.root.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) {}
             override fun onViewDetachedFromWindow(v: View) {
@@ -90,6 +96,23 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
         }
     }
 
+    // [B2] Canonical pairing dispatch from StartWirelessAdbViewHolder.
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun onPairClicked(context: android.content.Context) {
+        if ((context.display?.displayId ?: -1) > 0) {
+            // Multi-display (e.g. WSA): the in-app dialog can stay visible next
+            // to the system pairing dialog; input from a notification is
+            // awkward there, so prefer the dialog.
+            AdbPairDialogFragment().show(
+                context.asActivity<FragmentActivity>().supportFragmentManager
+            )
+        } else {
+            context.startActivity(
+                Intent(context, AdbPairingTutorialActivity::class.java)
+            )
+        }
+    }
+
     override fun onBind() {
         updateButtonState()
 
@@ -98,6 +121,11 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
         StarterState.isStarting.observeForever(stateObserver!!)
 
         val running = data.isRunning
+        // [B2] Pairing is only meaningful for the wireless method on R+.
+        binding.buttonPair.isVisible = !running &&
+                ShizukuSettings.getPreferredStartMethod() == ShizukuSettings.START_METHOD_WIRELESS &&
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+
         if (!running) {
             val methodName = when (ShizukuSettings.getPreferredStartMethod()) {
                 ShizukuSettings.START_METHOD_ROOT -> context.getString(R.string.start_method_root)

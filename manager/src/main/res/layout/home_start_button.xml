@@ -26,4 +26,16 @@
         android:textSize="12sp"
         tools:text="Using ADB (port 5555)" />
 
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/button_pair"
+        style="?attr/materialButtonOutlinedStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:minHeight="40dp"
+        android:text="@string/adb_pairing"
+        android:textSize="12sp"
+        android:visibility="gone"
+        tools:visibility="visible" />
+
 </LinearLayout>
