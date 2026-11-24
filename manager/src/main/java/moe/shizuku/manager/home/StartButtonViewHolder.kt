@@ -1,6 +1,7 @@
 package moe.shizuku.manager.home
 
 import android.content.Intent
+import android.os.Build
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -45,7 +46,9 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
 
     private fun onStartClicked(v: View) {
         if (StarterState.isStarting.value == true) return
-        StarterState.setStarting(true)
+        // [B1] StarterState is set by StarterService.onStartCommand itself.
+        // Setting it here would leave the button stuck grey when the chosen
+        // path opens a dialog (wireless discovery) that the user cancels.
         val context = v.context
         when (ShizukuSettings.getPreferredStartMethod()) {
             ShizukuSettings.START_METHOD_ROOT -> {
@@ -54,6 +57,16 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
                 })
             }
             ShizukuSettings.START_METHOD_WIRELESS -> {
+                // [B1] Canonical upstream behaviour (restored from 2e5e91d^):
+                // on Android 11+ open the discovery dialog (mDNS TLS_CONNECT,
+                // auto-starts when the dynamic port is found). Below R fall
+                // back to the legacy service.adb.tcp.port / 5555 transport.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    AdbDialogFragment().show(
+                        context.asActivity<FragmentActivity>().supportFragmentManager
+                    )
+                    return
+                }
                 val port = EnvironmentUtils.getAdbTcpPort()
                 if (port > 0) {
                     context.startService(Intent(context, StarterService::class.java).apply {
