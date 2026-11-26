@@ -64,20 +64,23 @@ class AdbMdns(
                         .asSequence()
                         .any { resolvedService.host.hostAddress == it.hostAddress }
                 }
-            && isPortAvailable(resolvedService.port)
+            && verifyPortAccepting(resolvedService.port)
         ) {
             serviceName = resolvedService.serviceName
             observer.onChanged(resolvedService.port)
         }
     }
 
-    private fun isPortAvailable(port: Int) = try {
-        ServerSocket().use {
-            it.bind(InetSocketAddress("127.0.0.1", port), 1)
+    private fun verifyPortAccepting(port: Int): Boolean {
+        // Проверяем реальную доступность порта по TCP с коротким таймаутом
+        return try {
+            Socket().use {
+                it.connect(InetSocketAddress("127.0.0.1", port), 250)
+                true
+            }
+        } catch (_: Throwable) {
             false
         }
-    } catch (e: IOException) {
-        true
     }
 
     internal class DiscoveryListener(private val adbMdns: AdbMdns) : NsdManager.DiscoveryListener {

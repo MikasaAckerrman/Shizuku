@@ -254,14 +254,29 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
 
             var lastError: Throwable? = null
             var success = false
+            var currentPort = port
             for (attempt in 0 until 3) {
                 if (attempt > 0) {
                     sb.append("\n[retry ADB connection attempt ${attempt + 1}/3]\n")
+                    // При повторной попытке проверяем, не сменился ли порт adbd
+                    if (host == "127.0.0.1") {
+                        val fallbackPort = EnvironmentUtils.getAdbTlsPort()
+                        if (fallbackPort in 1..65535 && fallbackPort != currentPort) {
+                            currentPort = fallbackPort
+                            sb.append("Switched to system WADB port: $currentPort\n")
+                        } else {
+                            val scoutPort = moe.shizuku.manager.adb.FastPortScout.findActiveWadbPort(400)
+                            if (scoutPort in 1..65535 && scoutPort != currentPort) {
+                                currentPort = scoutPort
+                                sb.append("Scout discovered active WADB port: $currentPort\n")
+                            }
+                        }
+                    }
                     postResult()
                     Thread.sleep(200)
                 }
                 try {
-                    AdbClient(host, port, key).use { client ->
+                    AdbClient(host, currentPort, key).use { client ->
                         client.connect()
                         client.shellCommand(Starter.internalCommand) {
                             sb.append(String(it))

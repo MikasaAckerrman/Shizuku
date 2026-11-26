@@ -79,7 +79,15 @@ class AdbDialogFragment : DialogFragment() {
         }
 
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.setOnClickListener {
-            startAndDismiss(EnvironmentUtils.getAdbTcpPort())
+            val tcpPort = EnvironmentUtils.getAdbTcpPort()
+            if (tcpPort in 1..65535) {
+                startAndDismiss(tcpPort)
+            } else {
+                val scoutPort = moe.shizuku.manager.adb.FastPortScout.findActiveWadbPort(500)
+                if (scoutPort in 1..65535) {
+                    startAndDismiss(scoutPort)
+                }
+            }
         }
 
         port.observe(this) {
