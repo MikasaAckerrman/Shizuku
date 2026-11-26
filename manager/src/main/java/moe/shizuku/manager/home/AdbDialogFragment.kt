@@ -78,7 +78,7 @@ class AdbDialogFragment : DialogFragment() {
             } ?: false
 
             if (!isWifiConnected) {
-                Toast.makeText(it.context, R.string.dialog_adb_wireless_network_is_not_connected, Toast.LENGTH_SHORT).show()
+                Toast.makeText(it.context, "Wi-Fi is not connected", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
