@@ -11,6 +11,7 @@ import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
+import java.net.Socket
 
 @RequiresApi(Build.VERSION_CODES.R)
 class AdbMdns(
@@ -72,14 +73,18 @@ class AdbMdns(
     }
 
     private fun verifyPortAccepting(port: Int): Boolean {
-        // Проверяем реальную доступность порта по TCP с коротким таймаутом
+        // Проверяем реальную доступность порта по TCP с коротким таймаутом (250мс)
+        var s: Socket? = null
         return try {
-            Socket().use {
-                it.connect(InetSocketAddress("127.0.0.1", port), 250)
-                true
-            }
+            s = Socket()
+            s.connect(InetSocketAddress("127.0.0.1", port), 250)
+            true
         } catch (_: Throwable) {
             false
+        } finally {
+            try {
+                s?.close()
+            } catch (_: Throwable) {}
         }
     }
 

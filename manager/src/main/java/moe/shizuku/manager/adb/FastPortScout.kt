@@ -50,9 +50,12 @@ object FastPortScout {
                 pool.execute {
                     if (activePort.get() != -1) return@execute
                     try {
-                        Socket().use { s ->
+                        val s = Socket()
+                        try {
                             s.connect(InetSocketAddress("127.0.0.1", p), 40)
                             activePort.compareAndSet(-1, p)
+                        } finally {
+                            try { s.close() } catch (_: Throwable) {}
                         }
                     } catch (_: Throwable) {}
                 }
