@@ -246,9 +246,11 @@ class BootCompleteReceiver : BroadcastReceiver() {
         val scanPorts = scanProcNetTcp()
 
         var lastError: Exception? = null
-        // Known sources first (full budget), then scan (short budget).
-        for ((port, readBudgetMs) in knownPorts.map { it to AdbClient.READ_TIMEOUT_MS } +
-                scanPorts.map { it to SCAN_READ_TIMEOUT_MS }) {
+        val knownList = knownPorts.map { it to AdbClient.READ_TIMEOUT_MS }
+        val scanList = scanPorts.map { it to SCAN_READ_TIMEOUT_MS }
+        for (item in (knownList + scanList)) {
+            val port = item.first
+            val readBudgetMs = item.second
             // [fix-13] The deadline MUST be enforced here too: a single
             // attempt could burn 60+ s in per-port timeouts and ANR the
             // receiver before the retry loop's deadline check ever runs.

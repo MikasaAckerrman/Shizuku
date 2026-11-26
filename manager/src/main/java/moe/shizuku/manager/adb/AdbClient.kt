@@ -36,6 +36,10 @@ class AdbClient(
     private val readTimeoutMs: Int = DEFAULT_READ_TIMEOUT_MS
 ) : Closeable {
 
+    companion object {
+        const val READ_TIMEOUT_MS = DEFAULT_READ_TIMEOUT_MS
+    }
+
     private var socket: Socket? = null
     private lateinit var plainInputStream: DataInputStream
     private lateinit var plainOutputStream: DataOutputStream
