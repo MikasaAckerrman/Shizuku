@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Высокоскоростной нативный скаут портов WADB на loopback (127.0.0.1).
- * Проверяет порты параллельно с ультракоротким таймаутом (15-30мс).
+ * Проверяет порты параллельно с ультракоротким таймаутом (40 мс).
  */
 object FastPortScout {
 
@@ -19,7 +19,7 @@ object FastPortScout {
      * Возвращает первый подтвержденный порт или -1.
      */
     fun findActiveWadbPort(timeoutTotalMs: Long = 600): Int {
-        val candidates = ArrayList<Int>(16)
+        val candidates = ArrayList<Int>(32)
 
         // 1. Читаем открытые сокеты из /proc/net/tcp и tcp6
         for (f in listOf("/proc/net/tcp", "/proc/net/tcp6")) {
@@ -37,8 +37,9 @@ object FastPortScout {
             } catch (_: Throwable) {}
         }
 
-        if (candidates.isEmpty()) {
-            return -1
+        // Если procfs пуст или заблокирован SELinux, добавляем стандартный порт 5555
+        if (!candidates.contains(5555)) {
+            candidates.add(5555)
         }
 
         // 2. Быстрая параллельная проверка подключения

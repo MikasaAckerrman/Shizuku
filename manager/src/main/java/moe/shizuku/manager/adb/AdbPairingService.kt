@@ -201,19 +201,34 @@ class AdbPairingService : Service() {
             }
         }
 
+        val builder = Notification.Builder(this, notificationChannel)
+            .setColor(getColor(R.color.notification))
+            .setSmallIcon(R.drawable.ic_system_icon)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setAutoCancel(true)
+
+        if (success) {
+            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            }
+            if (launchIntent != null) {
+                val pendingIntent = PendingIntent.getActivity(
+                    this,
+                    1002,
+                    launchIntent,
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                    else
+                        PendingIntent.FLAG_UPDATE_CURRENT
+                )
+                builder.setContentIntent(pendingIntent)
+            }
+        }
+
         getSystemService(NotificationManager::class.java).notify(
             notificationId,
-            Notification.Builder(this, notificationChannel)
-                .setColor(getColor(R.color.notification))
-                .setSmallIcon(R.drawable.ic_system_icon)
-                .setContentTitle(title)
-                .setContentText(text)
-                /*.apply {
-                    if (!success) {
-                        addAction(retryNotificationAction)
-                    }
-                }*/
-                .build()
+            builder.build()
         )
         stopSelf()
     }

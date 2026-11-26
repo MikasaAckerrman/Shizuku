@@ -6,9 +6,12 @@ import android.content.ActivityNotFoundException
 import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.DialogFragment
@@ -69,6 +72,16 @@ class AdbDialogFragment : DialogFragment() {
         }
 
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val cm = it.context.getSystemService(ConnectivityManager::class.java)
+            val isWifiConnected = cm?.activeNetwork?.let { network ->
+                cm.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+            } ?: false
+
+            if (!isWifiConnected) {
+                Toast.makeText(it.context, R.string.dialog_adb_wireless_network_is_not_connected, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
             val intent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
             intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             intent.putExtra(":settings:fragment_args_key", "toggle_adb_wireless")

@@ -24,6 +24,7 @@ import moe.shizuku.manager.adb.AdbClient
 import moe.shizuku.manager.adb.AdbKey
 import moe.shizuku.manager.adb.AdbKeyException
 import moe.shizuku.manager.adb.PreferenceAdbKeyStore
+import moe.shizuku.manager.utils.EnvironmentUtils
 import rikka.shizuku.Shizuku
 import java.net.ConnectException
 import javax.net.ssl.SSLProtocolException
@@ -223,13 +224,27 @@ class StarterService : Service() {
 
             var lastError: Throwable? = null
             var success = false
+            var currentPort = port
             for (attempt in 0 until 3) {
                 if (attempt > 0) {
                     sb.append("\n[retry ADB connection attempt ${attempt + 1}/3]\n")
+                    if (host == "127.0.0.1") {
+                        val fallbackPort = EnvironmentUtils.getAdbTlsPort()
+                        if (fallbackPort in 1..65535 && fallbackPort != currentPort) {
+                            currentPort = fallbackPort
+                            sb.append("Switched to system WADB port: $currentPort\n")
+                        } else {
+                            val scoutPort = moe.shizuku.manager.adb.FastPortScout.findActiveWadbPort(400)
+                            if (scoutPort in 1..65535 && scoutPort != currentPort) {
+                                currentPort = scoutPort
+                                sb.append("Scout discovered active WADB port: $currentPort\n")
+                            }
+                        }
+                    }
                     Thread.sleep(200)
                 }
                 try {
-                    AdbClient(host, port, key).use { client ->
+                    AdbClient(host, currentPort, key).use { client ->
                         client.connect()
                         client.shellCommand(Starter.internalCommand) {
                             sb.append(String(it))
