@@ -160,6 +160,7 @@ class StarterActivity : AppBarActivity() {
 
 private class ViewModel(context: Context, root: Boolean, host: String?, port: Int) : androidx.lifecycle.ViewModel() {
 
+    private val context = context.applicationContext
     private val sb = StringBuilder()
     private val _output = MutableLiveData<Resource<StringBuilder>>()
 
@@ -253,24 +254,18 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
                 return@launch
             }
 
+            val allowWadbFallback = (port != 5555) || (ShizukuSettings.getPreferredStartMethod() == ShizukuSettings.START_METHOD_WIRELESS)
             var lastError: Throwable? = null
             var success = false
             var currentPort = port
             for (attempt in 0 until 3) {
                 if (attempt > 0) {
                     sb.append("\n[retry ADB connection attempt ${attempt + 1}/3]\n")
-                    // При повторной попытке проверяем, не сменился ли порт adbd
-                    if (host == "127.0.0.1") {
-                        val fallbackPort = EnvironmentUtils.getAdbTlsPort()
-                        if (fallbackPort in 1..65535 && fallbackPort != currentPort) {
-                            currentPort = fallbackPort
-                            sb.append("Switched to system WADB port: $currentPort\n")
-                        } else {
-                            val scoutPort = moe.shizuku.manager.adb.FastPortScout.findActiveWadbPort(400)
-                            if (scoutPort in 1..65535 && scoutPort != currentPort) {
-                                currentPort = scoutPort
-                                sb.append("Scout discovered active WADB port: $currentPort\n")
-                            }
+                    if (host == "127.0.0.1" && allowWadbFallback) {
+                        val discovered = moe.shizuku.manager.adb.PortDiscovery.rediscoverWadbPort(context, currentPort)
+                        if (discovered in 1..65535 && discovered != currentPort) {
+                            currentPort = discovered
+                            sb.append("Re-discovered active WADB port: $currentPort\n")
                         }
                     }
                     postResult()
@@ -288,6 +283,8 @@ private class ViewModel(context: Context, root: Boolean, host: String?, port: In
                     break
                 } catch (e: Throwable) {
                     lastError = e
+                    sb.append("Attempt ${attempt + 1} (port $currentPort) error: ${e.javaClass.simpleName}: ${e.message}\n")
+                    postResult()
                     e.printStackTrace()
                 }
             }

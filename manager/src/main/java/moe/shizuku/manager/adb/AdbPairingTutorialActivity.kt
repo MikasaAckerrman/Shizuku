@@ -5,6 +5,7 @@ import android.app.ForegroundServiceStartNotAllowedException
 import android.app.NotificationManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.net.ConnectivityManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -25,6 +26,7 @@ class AdbPairingTutorialActivity : AppBarActivity() {
     private lateinit var binding: AdbPairingTutorialActivityBinding
 
     private var notificationEnabled: Boolean = false
+    private var wifiCallback: ConnectivityManager.NetworkCallback? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,8 +49,15 @@ class AdbPairingTutorialActivity : AppBarActivity() {
                 miui.isVisible = true
             }
 
+            wifiCallback = EnvironmentUtils.registerWifiListener(context) { wifiOk ->
+                runOnUiThread {
+                    developerOptions.isEnabled = wifiOk
+                    developerOptions.alpha = if (wifiOk) 1.0f else 0.4f
+                }
+            }
+
             developerOptions.setOnClickListener {
-                if (!EnvironmentUtils.requireWifiOrToast(context)) {
+                if (!EnvironmentUtils.isWifiConnected(context)) {
                     return@setOnClickListener
                 }
 
@@ -57,7 +66,7 @@ class AdbPairingTutorialActivity : AppBarActivity() {
                 intent.putExtra(":settings:fragment_args_key", "toggle_adb_wireless")
                 try {
                     context.startActivity(intent)
-                } catch (e: ActivityNotFoundException) {
+                } catch (_: ActivityNotFoundException) {
                 }
             }
 
@@ -66,10 +75,16 @@ class AdbPairingTutorialActivity : AppBarActivity() {
                 intent.putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
                 try {
                     context.startActivity(intent)
-                } catch (e: ActivityNotFoundException) {
+                } catch (_: ActivityNotFoundException) {
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        EnvironmentUtils.unregisterWifiListener(this, wifiCallback)
+        wifiCallback = null
     }
 
     private fun syncNotificationEnabled() {
@@ -94,6 +109,10 @@ class AdbPairingTutorialActivity : AppBarActivity() {
 
     override fun onResume() {
         super.onResume()
+
+        val wifiOk = EnvironmentUtils.isWifiConnected(this)
+        binding.developerOptions.isEnabled = wifiOk
+        binding.developerOptions.alpha = if (wifiOk) 1.0f else 0.4f
 
         val newNotificationEnabled = isNotificationEnabled()
         if (newNotificationEnabled != notificationEnabled) {

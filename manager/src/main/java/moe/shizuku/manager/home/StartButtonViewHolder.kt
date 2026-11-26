@@ -87,10 +87,12 @@ class StartButtonViewHolder(private val binding: HomeStartButtonBinding, root: V
                 }
             }
             else -> {
+                val tcpPort = EnvironmentUtils.getAdbTcpPort()
+                val targetPort = if (tcpPort in 1..65535) tcpPort else 5555
                 context.startService(Intent(context, StarterService::class.java).apply {
                     putExtra(StarterService.EXTRA_IS_ROOT, false)
                     putExtra(StarterService.EXTRA_HOST, "127.0.0.1")
-                    putExtra(StarterService.EXTRA_PORT, 5555)
+                    putExtra(StarterService.EXTRA_PORT, targetPort)
                 })
             }
         }

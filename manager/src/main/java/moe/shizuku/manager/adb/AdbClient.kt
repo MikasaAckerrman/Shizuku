@@ -19,6 +19,7 @@ import java.io.Closeable
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.IOException
+import java.net.InetSocketAddress
 import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -29,6 +30,7 @@ private const val LOCAL_CONNECT_TIMEOUT_MS = 1000
 private const val REMOTE_CONNECT_TIMEOUT_MS = 3000
 private const val DEFAULT_READ_TIMEOUT_MS = 5000
 private const val MAX_DATA_LENGTH = 1024 * 1024
+private const val MAX_PRE_OPEN_SKIP = 16
 
 class AdbClient(
     private val host: String,
@@ -39,6 +41,47 @@ class AdbClient(
 
     companion object {
         const val READ_TIMEOUT_MS = DEFAULT_READ_TIMEOUT_MS
+        const val PROBE_TIMEOUT_MS = 400
+
+        /**
+         * Lightweight protocol-level probe to verify that a local port is an
+         * actual adbd listener (replies with A_STLS, A_AUTH or A_CNXN) rather
+         * than a random local proxy/daemon. Does NOT require completing auth.
+         */
+        @JvmStatic
+        fun isAdbListener(host: String, port: Int, timeoutMs: Int = PROBE_TIMEOUT_MS): Boolean {
+            if (port !in 1..65535) return false
+            val s = Socket()
+            return try {
+                s.tcpNoDelay = true
+                s.soTimeout = timeoutMs
+                s.connect(InetSocketAddress(host, port), timeoutMs)
+                val dis = DataInputStream(s.getInputStream())
+                val dos = DataOutputStream(s.getOutputStream())
+                val cnxn = AdbMessage(A_CNXN, A_VERSION, A_MAXDATA, "host::")
+                dos.write(cnxn.toByteArray())
+                dos.flush()
+
+                val hdr = ByteArray(AdbMessage.HEADER_LENGTH)
+                dis.readFully(hdr)
+                val bb = ByteBuffer.wrap(hdr).order(ByteOrder.LITTLE_ENDIAN)
+                val cmd = bb.int
+                bb.int // arg0
+                bb.int // arg1
+                val len = bb.int
+                bb.int // crc
+                val magic = bb.int
+                if (cmd != (magic xor -1) || len < 0 || len > MAX_DATA_LENGTH) {
+                    false
+                } else {
+                    cmd == A_STLS || cmd == A_AUTH || cmd == A_CNXN
+                }
+            } catch (_: Throwable) {
+                false
+            } finally {
+                try { s.close() } catch (_: Throwable) {}
+            }
+        }
     }
 
     private var socket: Socket? = null
@@ -56,11 +99,13 @@ class AdbClient(
 
     @Throws(IOException::class)
     fun connect() {
+        useTls = false
         val s = Socket()
         socket = s
+        s.tcpNoDelay = true
         s.soTimeout = readTimeoutMs
         val timeout = if (host == "127.0.0.1" || host == "localhost") LOCAL_CONNECT_TIMEOUT_MS else REMOTE_CONNECT_TIMEOUT_MS
-        s.connect(java.net.InetSocketAddress(host, port), timeout)
+        s.connect(InetSocketAddress(host, port), timeout)
 
         plainInputStream = DataInputStream(s.getInputStream())
         plainOutputStream = DataOutputStream(s.getOutputStream())
@@ -89,6 +134,7 @@ class AdbClient(
             write(A_CNXN, A_VERSION, A_MAXDATA, "host::features=shell_v2,cmd,stat_v2,ls_v2,fixed_push_mkdir,apex,abb,fixed_push_symlink_timestamp,abb_exec,remount_shell,track_app,sendrecv_v2_sync,sendrecv_v2_brotli,sendrecv_v2_lz4,sendrecv_v2_zstd,sendrecv_v2_dedupe,openscreen_mdns,audiotrack")
             message = read()
             if (message.command == A_AUTH) {
+                if (message.arg0 != ADB_AUTH_TOKEN) error("not A_AUTH ADB_AUTH_TOKEN")
                 write(A_AUTH, ADB_AUTH_SIGNATURE, 0, key.sign(message.data))
                 message = read()
                 if (message.command != A_CNXN) {
@@ -107,7 +153,7 @@ class AdbClient(
             }
         }
 
-        if (message.command != A_CNXN) error("not A_CNXN")
+        if (message.command != A_CNXN) error("not A_CNXN: ${message.toStringShort()}")
     }
 
     fun shellCommand(command: String, listener: ((ByteArray) -> Unit)?) {
@@ -115,8 +161,11 @@ class AdbClient(
         write(A_OPEN, localId, 0, "shell:$command")
 
         var message = read()
-        // Wait for A_OKAY or A_CLSE, ignoring async/background packets if any
+        var skipped = 0
         while (message.command != A_OKAY && message.command != A_CLSE) {
+            if (++skipped > MAX_PRE_OPEN_SKIP) {
+                error("not A_OKAY or A_CLSE after $skipped messages: ${message.toStringShort()}")
+            }
             Log.w(TAG, "Unexpected message before open response: ${message.toStringShort()}, reading next")
             message = read()
         }
@@ -143,6 +192,7 @@ class AdbClient(
             A_CLSE -> {
                 val remoteId = message.arg0
                 write(A_CLSE, localId, remoteId)
+                throw IOException("adbd rejected shell stream (A_CLSE remoteId=$remoteId)")
             }
         }
     }
@@ -180,6 +230,7 @@ class AdbClient(
             data = null
         }
         val message = AdbMessage(command, arg0, arg1, dataLength, checksum, magic, data)
+        message.validateOrThrow()
         Log.d(TAG, "read ${message.toStringShort()}")
         return message
     }

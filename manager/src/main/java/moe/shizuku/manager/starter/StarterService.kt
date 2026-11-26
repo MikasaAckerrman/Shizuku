@@ -200,96 +200,70 @@ class StarterService : Service() {
         sb.append("Starting with $mode in port $port...").append('\n').append('\n')
 
         scope.launch {
-            // [fix] Any unexpected failure must reach finishError():
-            // otherwise StarterState stays "starting" forever and both
-            // start buttons remain disabled until the app restarts.
             try {
-                // [fix] If a REACHABLE server is running, stop it first
-                // (the user pressed Start to switch modes or to force a
-                // restart). An UNREACHABLE server — a zombie that survived
-                // a soft reboot — is handled by the native starter, which
-                // kills it by name; a ROOT-owned zombie (which the shell
-                // starter cannot SIGKILL) gets the root-shell fallback
-                // below.
                 stopExistingServerIfRunning()
 
                 val key = try {
-                AdbKey(PreferenceAdbKeyStore(ShizukuSettings.getPreferences()), "shizuku")
-            } catch (e: Throwable) {
-                e.printStackTrace()
-                sb.append(Log.getStackTraceString(e))
-                finishError(AdbKeyException(e))
-                return@launch
-            }
+                    AdbKey(PreferenceAdbKeyStore(ShizukuSettings.getPreferences()), "shizuku")
+                } catch (e: Throwable) {
+                    e.printStackTrace()
+                    sb.append(Log.getStackTraceString(e))
+                    finishError(AdbKeyException(e))
+                    return@launch
+                }
 
-            var lastError: Throwable? = null
-            var success = false
-            var currentPort = port
-            for (attempt in 0 until 3) {
-                if (attempt > 0) {
-                    sb.append("\n[retry ADB connection attempt ${attempt + 1}/3]\n")
-                    if (host == "127.0.0.1") {
-                        val fallbackPort = EnvironmentUtils.getAdbTlsPort()
-                        if (fallbackPort in 1..65535 && fallbackPort != currentPort) {
-                            currentPort = fallbackPort
-                            sb.append("Switched to system WADB port: $currentPort\n")
-                        } else {
-                            val scoutPort = moe.shizuku.manager.adb.FastPortScout.findActiveWadbPort(400)
-                            if (scoutPort in 1..65535 && scoutPort != currentPort) {
-                                currentPort = scoutPort
-                                sb.append("Scout discovered active WADB port: $currentPort\n")
+                val allowWadbFallback = (port != 5555) || (ShizukuSettings.getPreferredStartMethod() == ShizukuSettings.START_METHOD_WIRELESS)
+                var lastError: Throwable? = null
+                var success = false
+                var currentPort = port
+                for (attempt in 0 until 3) {
+                    if (attempt > 0) {
+                        sb.append("\n[retry ADB connection attempt ${attempt + 1}/3]\n")
+                        if (host == "127.0.0.1" && allowWadbFallback) {
+                            val discovered = moe.shizuku.manager.adb.PortDiscovery.rediscoverWadbPort(this@StarterService, currentPort)
+                            if (discovered in 1..65535 && discovered != currentPort) {
+                                currentPort = discovered
+                                sb.append("Re-discovered active WADB port: $currentPort\n")
                             }
                         }
+                        Thread.sleep(200)
                     }
-                    Thread.sleep(200)
-                }
-                try {
-                    AdbClient(host, currentPort, key).use { client ->
-                        client.connect()
-                        client.shellCommand(Starter.internalCommand) {
-                            sb.append(String(it))
+                    try {
+                        AdbClient(host, currentPort, key).use { client ->
+                            client.connect()
+                            client.shellCommand(Starter.internalCommand) {
+                                sb.append(String(it))
+                            }
+                        }
+                        success = verifyServerStarted(sb)
+                        if (success) break
+                    } catch (e: Throwable) {
+                        lastError = e
+                        sb.append("Attempt ${attempt + 1} (port $currentPort) error: ${e.javaClass.simpleName}: ${e.message}\n")
+                        e.printStackTrace()
+                    }
+
+                    if (!success && sb.indexOf(ROOT_ZOMBIE_MARKER) >= 0) {
+                        sb.append('\n')
+                            .append("[the running server was started as root, stopping it via root...]\n")
+                        if (killServerViaRoot()) {
+                            sb.append("[stopped, retrying]\n")
+                            continue
+                        } else {
+                            sb.append("[no root access: use \"Start with root\" to restart the server]\n")
+                            break
                         }
                     }
-                    // [fix] The ADB session completing does NOT guarantee the
-                    // server is alive. Verify before reporting success, but
-                    // tolerate the case where the binder has not been
-                    // delivered to us yet (server may finish publishing right
-                    // after the shell command returns, or the delivery retry
-                    // may still be pending after a soft reboot).
-                    success = verifyServerStarted(sb)
-                    if (success) break
-                } catch (e: Throwable) {
-                    lastError = e
-                    e.printStackTrace()
                 }
 
-                // [fix] A server started as ROOT cannot be killed by the
-                // ADB (shell) starter — SIGKILL fails with EPERM and every
-                // retry would hit the same wall. If a root shell is
-                // available, stop the zombie ourselves and retry the ADB
-                // start; otherwise tell the user to use "Start with root".
-                if (!success && sb.indexOf(ROOT_ZOMBIE_MARKER) >= 0) {
-                    sb.append('\n')
-                        .append("[the running server was started as root, stopping it via root...]\n")
-                    if (killServerViaRoot()) {
-                        sb.append("[stopped, retrying]\n")
-                        continue
-                    } else {
-                        sb.append("[no root access: use \"Start with root\" to restart the server]\n")
-                        break
-                    }
+                if (success) {
+                    finishSuccess()
+                } else {
+                    sb.append('\n').append(Log.getStackTraceString(lastError))
+                    sb.append("\nServer did not confirm it is running.\n")
+                    finishError(lastError ?: RuntimeException("ADB connection failed after 3 attempts"))
                 }
-            }
-
-            if (success) {
-                finishSuccess()
-            } else {
-                sb.append('\n').append(Log.getStackTraceString(lastError))
-                sb.append("\nServer did not confirm it is running.\n")
-                finishError(lastError ?: RuntimeException("ADB connection failed after 3 attempts"))
-            }
             } catch (t: Throwable) {
-                // [fix] unexpected failure — must release StarterState.
                 finishError(t)
             }
         }

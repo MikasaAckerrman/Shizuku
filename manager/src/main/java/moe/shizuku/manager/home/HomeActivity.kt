@@ -35,6 +35,10 @@ import rikka.shizuku.Shizuku
 
 abstract class HomeActivity : AppBarActivity() {
 
+    companion object {
+        const val EXTRA_AUTO_START_WIRELESS = "moe.shizuku.manager.extra.AUTO_START_WIRELESS"
+    }
+
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
         checkServerStatus()
         appsModel.load(onlyCount = true)
@@ -84,7 +88,24 @@ abstract class HomeActivity : AppBarActivity() {
 
         Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
         Shizuku.addBinderDeadListener(binderDeadListener)
+        handleAutoStartIntent(intent)
         Trace.endSection()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleAutoStartIntent(intent)
+    }
+
+    private fun handleAutoStartIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_AUTO_START_WIRELESS, false) != true) return
+        intent.removeExtra(EXTRA_AUTO_START_WIRELESS)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R
+            && !runCatching { Shizuku.pingBinder() }.getOrDefault(false)
+        ) {
+            AdbDialogFragment().show(supportFragmentManager)
+        }
     }
 
     private fun statusChanged(status: ServiceStatus?): Boolean {

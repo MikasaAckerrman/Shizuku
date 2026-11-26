@@ -53,7 +53,12 @@ class AdbPairingService : Service() {
 
     private val observer = Observer<Int> { port ->
         Log.i(tag, "Pairing service port: $port")
-        if (port <= 0) return@Observer
+        if (port <= 0) {
+            if (started) {
+                getSystemService(NotificationManager::class.java).notify(notificationId, searchingNotification)
+            }
+            return@Observer
+        }
 
         // Since the service could be killed before user finishing input,
         // we need to put the port into Intent
@@ -209,21 +214,22 @@ class AdbPairingService : Service() {
             .setAutoCancel(true)
 
         if (success) {
-            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            val launchIntent = Intent(this, moe.shizuku.manager.MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra(moe.shizuku.manager.home.HomeActivity.EXTRA_AUTO_START_WIRELESS, true)
             }
-            if (launchIntent != null) {
-                val pendingIntent = PendingIntent.getActivity(
-                    this,
-                    1002,
-                    launchIntent,
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
-                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-                    else
-                        PendingIntent.FLAG_UPDATE_CURRENT
-                )
-                builder.setContentIntent(pendingIntent)
-            }
+            val pendingIntent = PendingIntent.getActivity(
+                this,
+                1002,
+                launchIntent,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                else
+                    PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            builder.setContentIntent(pendingIntent)
+        } else {
+            builder.addAction(retryNotificationAction)
         }
 
         getSystemService(NotificationManager::class.java).notify(
@@ -341,7 +347,6 @@ class AdbPairingService : Service() {
             .setContentTitle(getString(R.string.notification_adb_pairing_service_found_title))
             .setSmallIcon(R.drawable.ic_system_icon)
             .setContentIntent(tapPendingIntent)
-            .setAutoCancel(true)
             .addAction(replyNotificationAction(port))
             .build()
     }

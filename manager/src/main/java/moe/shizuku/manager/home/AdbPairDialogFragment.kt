@@ -4,7 +4,9 @@ import android.annotation.SuppressLint
 import android.app.Dialog
 import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.DialogInterface
 import android.content.Intent
+import android.net.ConnectivityManager
 import android.os.Build.VERSION_CODES
 import android.os.Bundle
 import android.provider.Settings
@@ -37,6 +39,13 @@ class AdbPairDialogFragment : DialogFragment() {
     private lateinit var binding: AdbPairDialogBinding
 
     private val viewModel by viewModels { ViewModel(requireContext()) }
+    private var wifiCallback: ConnectivityManager.NetworkCallback? = null
+
+    override fun onDismiss(dialog: DialogInterface) {
+        super.onDismiss(dialog)
+        EnvironmentUtils.unregisterWifiListener(requireContext(), wifiCallback)
+        wifiCallback = null
+    }
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val context = requireContext()
@@ -64,8 +73,16 @@ class AdbPairDialogFragment : DialogFragment() {
 
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).isVisible = false
 
-        dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
-            if (!EnvironmentUtils.requireWifiOrToast(it.context)) {
+        val devButton = dialog.getButton(AlertDialog.BUTTON_NEUTRAL)
+        wifiCallback = EnvironmentUtils.registerWifiListener(dialog.context) { wifiOk ->
+            devButton.post {
+                devButton.isEnabled = wifiOk
+                devButton.alpha = if (wifiOk) 1.0f else 0.4f
+            }
+        }
+
+        devButton.setOnClickListener {
+            if (!EnvironmentUtils.isWifiConnected(it.context)) {
                 return@setOnClickListener
             }
 
@@ -74,7 +91,7 @@ class AdbPairDialogFragment : DialogFragment() {
             intent.putExtra(":settings:fragment_args_key", "toggle_adb_wireless")
             try {
                 it.context.startActivity(intent)
-            } catch (e: ActivityNotFoundException) {
+            } catch (_: ActivityNotFoundException) {
             }
         }
 
