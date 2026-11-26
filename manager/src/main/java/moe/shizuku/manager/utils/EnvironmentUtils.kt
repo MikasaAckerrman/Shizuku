@@ -3,7 +3,10 @@ package moe.shizuku.manager.utils
 import android.app.UiModeManager
 import android.content.Context
 import android.content.res.Configuration
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.SystemProperties
+import android.widget.Toast
 import java.io.File
 
 object EnvironmentUtils {
@@ -12,6 +15,23 @@ object EnvironmentUtils {
     fun isWatch(context: Context): Boolean {
         return (context.getSystemService(UiModeManager::class.java).currentModeType
                 == Configuration.UI_MODE_TYPE_WATCH)
+    }
+
+    @JvmStatic
+    fun isWifiConnected(context: Context): Boolean {
+        val cm = context.getSystemService(ConnectivityManager::class.java) ?: return false
+        val network = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(network) ?: return false
+        return caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+    }
+
+    @JvmStatic
+    fun requireWifiOrToast(context: Context): Boolean {
+        if (!isWifiConnected(context)) {
+            Toast.makeText(context, "Wi-Fi is not connected", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        return true
     }
 
     fun isRooted(): Boolean {

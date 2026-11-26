@@ -23,6 +23,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
+import moe.shizuku.manager.utils.EnvironmentUtils
 import moe.shizuku.manager.R
 import moe.shizuku.manager.ShizukuSettings
 import moe.shizuku.manager.adb.*
@@ -64,6 +65,10 @@ class AdbPairDialogFragment : DialogFragment() {
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).isVisible = false
 
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+            if (!EnvironmentUtils.requireWifiOrToast(it.context)) {
+                return@setOnClickListener
+            }
+
             val intent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
             intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             intent.putExtra(":settings:fragment_args_key", "toggle_adb_wireless")

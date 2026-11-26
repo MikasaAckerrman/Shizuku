@@ -16,6 +16,7 @@ import androidx.core.view.isVisible
 import moe.shizuku.manager.AppConstants
 import moe.shizuku.manager.app.AppBarActivity
 import moe.shizuku.manager.databinding.AdbPairingTutorialActivityBinding
+import moe.shizuku.manager.utils.EnvironmentUtils
 import rikka.compatibility.DeviceCompatibility
 
 @RequiresApi(Build.VERSION_CODES.R)
@@ -47,6 +48,10 @@ class AdbPairingTutorialActivity : AppBarActivity() {
             }
 
             developerOptions.setOnClickListener {
+                if (!EnvironmentUtils.requireWifiOrToast(context)) {
+                    return@setOnClickListener
+                }
+
                 val intent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
                 intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                 intent.putExtra(":settings:fragment_args_key", "toggle_adb_wireless")

@@ -25,8 +25,9 @@ import java.nio.ByteOrder
 import javax.net.ssl.SSLSocket
 
 private const val TAG = "AdbClient"
-private const val CONNECT_TIMEOUT_MS = 5000
-private const val DEFAULT_READ_TIMEOUT_MS = 10000
+private const val LOCAL_CONNECT_TIMEOUT_MS = 1000
+private const val REMOTE_CONNECT_TIMEOUT_MS = 3000
+private const val DEFAULT_READ_TIMEOUT_MS = 5000
 private const val MAX_DATA_LENGTH = 1024 * 1024
 
 class AdbClient(
@@ -58,7 +59,8 @@ class AdbClient(
         val s = Socket()
         socket = s
         s.soTimeout = readTimeoutMs
-        s.connect(java.net.InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+        val timeout = if (host == "127.0.0.1" || host == "localhost") LOCAL_CONNECT_TIMEOUT_MS else REMOTE_CONNECT_TIMEOUT_MS
+        s.connect(java.net.InetSocketAddress(host, port), timeout)
 
         plainInputStream = DataInputStream(s.getInputStream())
         plainOutputStream = DataOutputStream(s.getOutputStream())

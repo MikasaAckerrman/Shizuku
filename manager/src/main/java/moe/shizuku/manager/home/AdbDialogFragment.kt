@@ -72,13 +72,7 @@ class AdbDialogFragment : DialogFragment() {
         }
 
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-            val cm = it.context.getSystemService(ConnectivityManager::class.java)
-            val isWifiConnected = cm?.activeNetwork?.let { network ->
-                cm.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-            } ?: false
-
-            if (!isWifiConnected) {
-                Toast.makeText(it.context, "Wi-Fi is not connected", Toast.LENGTH_SHORT).show()
+            if (!EnvironmentUtils.requireWifiOrToast(it.context)) {
                 return@setOnClickListener
             }
 
@@ -105,7 +99,18 @@ class AdbDialogFragment : DialogFragment() {
 
         port.observe(this) {
             if (it > 65535 || it < 1) return@observe
-            startAndDismiss(it)
+            // Перед переходом делаем быструю проверку: порт действительно принимает TCP?
+            try {
+                val s = Socket()
+                try {
+                    s.connect(InetSocketAddress("127.0.0.1", it), 300)
+                    startAndDismiss(it)
+                } finally {
+                    try { s.close() } catch (_: Throwable) {}
+                }
+            } catch (_: Throwable) {
+                // Если анонсированный порт сразу недоступен, не закрываем диалог, продолжаем поиск
+            }
         }
     }
 
